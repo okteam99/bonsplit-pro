@@ -139,6 +139,7 @@ struct TabBarView: View {
                                 .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                                     targetIndex: pane.tabs.count,
                                     pane: pane,
+                                    bonsplitController: controller,
                                     controller: splitViewController,
                                     dropTargetIndex: $dropTargetIndex,
                                     dropLifecycle: $dropLifecycle
@@ -268,6 +269,7 @@ struct TabBarView: View {
         .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
             targetIndex: index,
             pane: pane,
+            bonsplitController: controller,
             controller: splitViewController,
             dropTargetIndex: $dropTargetIndex,
             dropLifecycle: $dropLifecycle
@@ -402,6 +404,7 @@ struct TabBarView: View {
             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                 targetIndex: pane.tabs.count,
                 pane: pane,
+                bonsplitController: controller,
                 controller: splitViewController,
                 dropTargetIndex: $dropTargetIndex,
                 dropLifecycle: $dropLifecycle
@@ -818,6 +821,7 @@ enum TabDropLifecycle {
 struct TabDropDelegate: DropDelegate {
     let targetIndex: Int
     let pane: PaneState
+    let bonsplitController: BonsplitController
     let controller: SplitViewController
     @Binding var dropTargetIndex: Int?
     @Binding var dropLifecycle: TabDropLifecycle
@@ -842,7 +846,18 @@ struct TabDropDelegate: DropDelegate {
         // may not have propagated yet when performDrop runs.
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            return false
+            guard let transfer = decodeTransfer(from: info) else { return false }
+            let request = BonsplitController.ExternalTabDropRequest(
+                tabId: TabID(id: transfer.tab.id),
+                sourcePaneId: PaneID(id: transfer.sourcePaneId),
+                destination: .insert(targetPane: pane.id, targetIndex: targetIndex)
+            )
+            let handled = bonsplitController.onExternalTabDrop?(request) ?? false
+            if handled {
+                dropLifecycle = .idle
+                dropTargetIndex = nil
+            }
+            return handled
         }
 
         // Execute synchronously when possible so the dragged tab disappears immediately.
@@ -971,5 +986,18 @@ struct TabDropDelegate: DropDelegate {
             return nil
         }
         return transfer
+    }
+
+    private func decodeTransfer(from info: DropInfo) -> TabTransferData? {
+        let pasteboard = NSPasteboard(name: .drag)
+        let type = NSPasteboard.PasteboardType(UTType.tabTransfer.identifier)
+        if let data = pasteboard.data(forType: type),
+           let transfer = try? JSONDecoder().decode(TabTransferData.self, from: data) {
+            return transfer
+        }
+        if let raw = pasteboard.string(forType: type) {
+            return decodeTransfer(from: raw)
+        }
+        return nil
     }
 }

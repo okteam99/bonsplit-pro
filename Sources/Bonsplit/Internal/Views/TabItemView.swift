@@ -317,6 +317,10 @@ struct TabItemView: View {
         }
         .disabled(!contextMenuState.canCloseOthers)
 
+        Button("Move Tab…") {
+            onContextAction(.move)
+        }
+
         Divider()
 
         Button("New Terminal Tab to Right") {

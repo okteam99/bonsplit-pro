@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 /// Drop zone positions for creating splits
 public enum DropZone: Equatable {
@@ -324,7 +325,31 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         // may not have propagated yet when performDrop runs.
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            return false
+            guard let transfer = decodeTransfer(from: info) else { return false }
+            let destination: BonsplitController.ExternalTabDropRequest.Destination
+            if zone == .center {
+                destination = .insert(targetPane: pane.id, targetIndex: nil)
+            } else if let orientation = zone.orientation {
+                destination = .split(
+                    targetPane: pane.id,
+                    orientation: orientation,
+                    insertFirst: zone.insertsFirst
+                )
+            } else {
+                return false
+            }
+
+            let request = BonsplitController.ExternalTabDropRequest(
+                tabId: TabID(id: transfer.tab.id),
+                sourcePaneId: PaneID(id: transfer.sourcePaneId),
+                destination: destination
+            )
+            let handled = bonsplitController.onExternalTabDrop?(request) ?? false
+            if handled {
+                dropLifecycle = .idle
+                activeDropZone = nil
+            }
+            return handled
         }
 
         // Clear both observable and non-observable drag state.
@@ -433,5 +458,18 @@ struct UnifiedPaneDropDelegate: DropDelegate {
             return nil
         }
         return transfer
+    }
+
+    private func decodeTransfer(from info: DropInfo) -> TabTransferData? {
+        let pasteboard = NSPasteboard(name: .drag)
+        let type = NSPasteboard.PasteboardType(UTType.tabTransfer.identifier)
+        if let data = pasteboard.data(forType: type),
+           let transfer = try? JSONDecoder().decode(TabTransferData.self, from: data) {
+            return transfer
+        }
+        if let raw = pasteboard.string(forType: type) {
+            return decodeTransfer(from: raw)
+        }
+        return nil
     }
 }
