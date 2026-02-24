@@ -359,7 +359,7 @@ struct TabBarView: View {
             let provider = NSItemProvider()
             provider.registerDataRepresentation(
                 forTypeIdentifier: UTType.tabTransfer.identifier,
-                visibility: .all
+                visibility: .ownProcess
             ) { completion in
                 completion(data, nil)
                 return nil
@@ -846,7 +846,10 @@ struct TabDropDelegate: DropDelegate {
         // may not have propagated yet when performDrop runs.
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            guard let transfer = decodeTransfer(from: info) else { return false }
+            guard let transfer = decodeTransfer(from: info),
+                  transfer.isFromCurrentProcess else {
+                return false
+            }
             let request = BonsplitController.ExternalTabDropRequest(
                 tabId: TabID(id: transfer.tab.id),
                 sourcePaneId: PaneID(id: transfer.sourcePaneId),
@@ -958,6 +961,18 @@ struct TabDropDelegate: DropDelegate {
         // Do NOT gate on draggingTab != nil: @Observable changes from createItemProvider
         // may not have propagated to the drop delegate yet, causing false rejections.
         let hasType = info.hasItemsConforming(to: [.tabTransfer])
+        guard hasType else { return false }
+
+        // Local drags use in-memory state and are always same-process.
+        if controller.activeDragTab != nil || controller.draggingTab != nil {
+            return true
+        }
+
+        // External drags (another Bonsplit controller) must include a payload from this process.
+        guard let transfer = decodeTransfer(from: info),
+              transfer.isFromCurrentProcess else {
+            return false
+        }
 #if DEBUG
         let hasDrag = controller.draggingTab != nil
         let hasActive = controller.activeDragTab != nil
@@ -966,7 +981,7 @@ struct TabDropDelegate: DropDelegate {
             "allowed=\(hasType ? 1 : 0) hasDrag=\(hasDrag ? 1 : 0) hasActive=\(hasActive ? 1 : 0)"
         )
 #endif
-        return hasType
+        return true
     }
 
     private func shouldSuppressIndicatorForNoopSamePaneDrop() -> Bool {
