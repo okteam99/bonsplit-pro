@@ -4,11 +4,11 @@ import AppKit
 
 private final class TabBarInteractionContainerView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
 }
 
-private final class TabBarInteractionHostingView<Content: View>: NSHostingView<Content> {
-    override var mouseDownCanMoveWindow: Bool { false }
-}
+private final class TabBarInteractionHostingView<Content: View>: BonsplitHostingView<Content> {}
 
 private struct TabBarHostingWrapper<Content: View>: NSViewRepresentable {
     let content: Content

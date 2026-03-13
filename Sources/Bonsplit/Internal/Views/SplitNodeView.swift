@@ -68,7 +68,7 @@ struct SinglePaneWrapper<Content: View, EmptyContent: View>: NSViewRepresentable
             showSplitButtons: showSplitButtons,
             contentViewLifecycle: contentViewLifecycle
         )
-        let hostingController = NSHostingController(rootView: paneView)
+        let hostingController = BonsplitHostingController(rootView: paneView)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
 
         let containerView = PaneDragContainerView()
@@ -112,6 +112,6 @@ struct SinglePaneWrapper<Content: View, EmptyContent: View>: NSViewRepresentable
     }
 
     class Coordinator {
-        var hostingController: NSHostingController<PaneContainerView<Content, EmptyContent>>?
+        var hostingController: BonsplitHostingController<PaneContainerView<Content, EmptyContent>>?
     }
 }
