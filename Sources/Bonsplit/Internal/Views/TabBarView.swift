@@ -221,6 +221,12 @@ struct TabBarView: View {
         isMinimalMode ? leadingTrafficLightInset : 0
     }
 
+    private func handleEmptyTabBarDoubleClick() -> Bool {
+        guard splitViewController.isInteractive, !isMinimalMode else { return false }
+        controller.requestNewTab(kind: "terminal", inPane: pane.id)
+        return true
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Scrollable tabs with fade overlays
@@ -267,11 +273,7 @@ struct TabBarView: View {
                                 .frame(width: trailing, height: TabBarMetrics.tabHeight)
                                 .contentShape(Rectangle())
                                 .background(
-                                    TabBarWindowDragRegion {
-                                        guard splitViewController.isInteractive else { return false }
-                                        controller.requestNewTab(kind: "terminal", inPane: pane.id)
-                                        return true
-                                    }
+                                    TabBarWindowDragRegion(onDoubleClick: handleEmptyTabBarDoubleClick)
                                 )
                                 .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                                     targetIndex: pane.tabs.count,
@@ -561,11 +563,7 @@ struct TabBarView: View {
             .frame(width: 30, height: TabBarMetrics.tabHeight)
             .contentShape(Rectangle())
             .background(
-                TabBarWindowDragRegion {
-                    guard splitViewController.isInteractive else { return false }
-                    controller.requestNewTab(kind: "terminal", inPane: pane.id)
-                    return true
-                }
+                TabBarWindowDragRegion(onDoubleClick: handleEmptyTabBarDoubleClick)
             )
             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                 targetIndex: pane.tabs.count,
