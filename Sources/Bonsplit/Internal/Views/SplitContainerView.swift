@@ -527,34 +527,67 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
             max(splitTotalSize(in: splitView) - splitView.dividerThickness, 0)
         }
 
-        private func requestedMinimumPaneSize() -> CGFloat {
+        private func requestedLeafMinimumPaneSize() -> CGFloat {
             max(
                 splitState.orientation == .horizontal ? minimumPaneWidth : minimumPaneHeight,
                 1
             )
         }
 
-        private func effectiveMinimumPaneSize(in splitView: NSSplitView) -> CGFloat {
+        private func requestedMinimumPaneSizes(in splitView: NSSplitView) -> (first: CGFloat, second: CGFloat) {
+            let leafMinimumPaneSize = requestedLeafMinimumPaneSize()
+            let dividerThickness = splitView.dividerThickness
+
+            return (
+                first: splitState.first.minimumExtent(
+                    along: splitState.orientation,
+                    leafMinimumExtent: leafMinimumPaneSize,
+                    dividerThickness: dividerThickness
+                ),
+                second: splitState.second.minimumExtent(
+                    along: splitState.orientation,
+                    leafMinimumExtent: leafMinimumPaneSize,
+                    dividerThickness: dividerThickness
+                )
+            )
+        }
+
+        private func effectiveMinimumPaneSizes(in splitView: NSSplitView) -> (first: CGFloat, second: CGFloat) {
             let available = splitAvailableSize(in: splitView)
-            guard available > 0 else { return 0 }
-            // When the container is too small for both configured minimums, keep both panes
-            // visible by evenly splitting the available space rather than forcing invalid bounds.
-            return min(requestedMinimumPaneSize(), available / 2)
+            guard available > 0 else { return (0, 0) }
+
+            let requestedMinimums = requestedMinimumPaneSizes(in: splitView)
+            let totalRequestedMinimum = requestedMinimums.first + requestedMinimums.second
+
+            guard totalRequestedMinimum > 0 else { return (0, 0) }
+            guard totalRequestedMinimum > available else { return requestedMinimums }
+
+            // When the container is too small to satisfy the full recursive minimum for both
+            // sides, scale both down proportionally so every descendant stays visible and deeper
+            // split trees keep a fairer share of the constrained space.
+            let scale = available / totalRequestedMinimum
+            return (
+                first: requestedMinimums.first * scale,
+                second: requestedMinimums.second * scale
+            )
         }
 
         private func normalizedDividerBounds(in splitView: NSSplitView) -> ClosedRange<CGFloat> {
             let available = splitAvailableSize(in: splitView)
             guard available > 0 else { return 0...1 }
-            let minNormalized = min(0.5, effectiveMinimumPaneSize(in: splitView) / available)
-            return minNormalized...(1 - minNormalized)
+            let minimumPaneSizes = effectiveMinimumPaneSizes(in: splitView)
+            let minNormalized = min(1, minimumPaneSizes.first / available)
+            let maxNormalized = max(minNormalized, 1 - (minimumPaneSizes.second / available))
+            return minNormalized...maxNormalized
         }
 
         private func clampedDividerPosition(_ position: CGFloat, in splitView: NSSplitView) -> CGFloat {
             let available = splitAvailableSize(in: splitView)
             guard available > 0 else { return 0 }
-            let minPaneSize = effectiveMinimumPaneSize(in: splitView)
-            let maxPosition = max(minPaneSize, available - minPaneSize)
-            return min(max(position, minPaneSize), maxPosition)
+            let minimumPaneSizes = effectiveMinimumPaneSizes(in: splitView)
+            let minPosition = minimumPaneSizes.first
+            let maxPosition = max(minPosition, available - minimumPaneSizes.second)
+            return min(max(position, minPosition), maxPosition)
         }
 #if DEBUG
         private func debugLogDividerDragSkip(
@@ -881,15 +914,15 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
             // Allow edge positions during animation
             guard !isAnimating else { return proposedMinimumPosition }
-            return max(proposedMinimumPosition, effectiveMinimumPaneSize(in: splitView))
+            return max(proposedMinimumPosition, effectiveMinimumPaneSizes(in: splitView).first)
         }
 
         func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
             // Allow edge positions during animation
             guard !isAnimating else { return proposedMaximumPosition }
             let availableSize = splitAvailableSize(in: splitView)
-            let minimumPaneSize = effectiveMinimumPaneSize(in: splitView)
-            let maxCoordinate = max(minimumPaneSize, availableSize - minimumPaneSize)
+            let minimumPaneSizes = effectiveMinimumPaneSizes(in: splitView)
+            let maxCoordinate = max(minimumPaneSizes.first, availableSize - minimumPaneSizes.second)
             return min(proposedMaximumPosition, maxCoordinate)
         }
     }

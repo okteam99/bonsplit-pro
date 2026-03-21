@@ -109,4 +109,39 @@ indirect enum SplitNode: Identifiable, Equatable {
                  + splitState.second.computePaneBounds(in: secondRect)
         }
     }
+
+    /// Minimum size this subtree requires along the given split axis.
+    /// Leaf panes use the configured pane minimum; nested splits accumulate
+    /// that minimum only when they subdivide along the same axis.
+    func minimumExtent(
+        along orientation: SplitOrientation,
+        leafMinimumExtent: CGFloat,
+        dividerThickness: CGFloat
+    ) -> CGFloat {
+        let clampedLeafMinimum = max(leafMinimumExtent, 1)
+        let clampedDividerThickness = max(dividerThickness, 0)
+
+        switch self {
+        case .pane:
+            return clampedLeafMinimum
+
+        case .split(let splitState):
+            let firstMinimum = splitState.first.minimumExtent(
+                along: orientation,
+                leafMinimumExtent: clampedLeafMinimum,
+                dividerThickness: clampedDividerThickness
+            )
+            let secondMinimum = splitState.second.minimumExtent(
+                along: orientation,
+                leafMinimumExtent: clampedLeafMinimum,
+                dividerThickness: clampedDividerThickness
+            )
+
+            if splitState.orientation == orientation {
+                return firstMinimum + secondMinimum + clampedDividerThickness
+            }
+
+            return max(firstMinimum, secondMinimum)
+        }
+    }
 }

@@ -175,9 +175,12 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
                 isFocused: isFocused,
                 showSplitButtons: showSplitButtons
             )
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(1)
 
             // Content area with drop zones
             contentAreaWithDropZones
+                .layoutPriority(0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Clear drop state when drag ends elsewhere (cancelled, dropped in another pane, etc.)
