@@ -719,6 +719,71 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testSplitCoordinatorUsesRecursiveMinimumsForNestedRows() {
+        let splitState = makeThreeRowSplitState()
+        let coordinator = SplitContainerView<Color, Color>.Coordinator(
+            splitState: splitState,
+            minimumPaneWidth: 100,
+            minimumPaneHeight: 100,
+            onGeometryChange: nil
+        )
+
+        let splitView = NSSplitView(frame: NSRect(x: 0, y: 0, width: 400, height: 480))
+        splitView.isVertical = false
+        splitView.dividerStyle = .thin
+
+        let dividerThickness = splitView.dividerThickness
+        let availableHeight = splitView.bounds.height - dividerThickness
+        let expectedTopMinimum: CGFloat = 100
+        let expectedLowerClusterMinimum: CGFloat = 200 + dividerThickness
+
+        XCTAssertEqual(
+            coordinator.splitView(splitView, constrainMinCoordinate: 0, ofSubviewAt: 0),
+            expectedTopMinimum,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            coordinator.splitView(splitView, constrainMaxCoordinate: availableHeight, ofSubviewAt: 0),
+            availableHeight - expectedLowerClusterMinimum,
+            accuracy: 0.0001
+        )
+    }
+
+    @MainActor
+    func testSplitCoordinatorScalesRecursiveMinimumsWhenContainerIsTooSmall() {
+        let splitState = makeThreeRowSplitState()
+        let coordinator = SplitContainerView<Color, Color>.Coordinator(
+            splitState: splitState,
+            minimumPaneWidth: 100,
+            minimumPaneHeight: 100,
+            onGeometryChange: nil
+        )
+
+        let splitView = NSSplitView(frame: NSRect(x: 0, y: 0, width: 400, height: 220))
+        splitView.isVertical = false
+        splitView.dividerStyle = .thin
+
+        let dividerThickness = splitView.dividerThickness
+        let availableHeight = splitView.bounds.height - dividerThickness
+        let requestedTopMinimum: CGFloat = 100
+        let requestedLowerClusterMinimum: CGFloat = 200 + dividerThickness
+        let expectedCollapsedCoordinate = availableHeight * (
+            requestedTopMinimum / (requestedTopMinimum + requestedLowerClusterMinimum)
+        )
+
+        XCTAssertEqual(
+            coordinator.splitView(splitView, constrainMinCoordinate: 0, ofSubviewAt: 0),
+            expectedCollapsedCoordinate,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            coordinator.splitView(splitView, constrainMaxCoordinate: availableHeight, ofSubviewAt: 0),
+            expectedCollapsedCoordinate,
+            accuracy: 0.0001
+        )
+    }
+
+    @MainActor
     func testPaneDropOverlayDoesNotResizeHostedContentDuringHover() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
@@ -938,6 +1003,20 @@ final class BonsplitTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func makeThreeRowSplitState() -> SplitState {
+        SplitState(
+            orientation: .vertical,
+            first: .pane(PaneState()),
+            second: .split(
+                SplitState(
+                    orientation: .vertical,
+                    first: .pane(PaneState()),
+                    second: .pane(PaneState())
+                )
+            )
+        )
     }
 
     @MainActor
