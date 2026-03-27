@@ -688,17 +688,14 @@ private struct TabBarWindowDragView: NSViewRepresentable {
             guard NSApp.currentEvent?.type == .leftMouseDown else { return nil }
             guard UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" else { return nil }
             guard bounds.contains(point) else { return nil }
-            // Check if an interactive element (button, tab) is under this point.
-            // If so, pass through so the user can click tabs/buttons normally.
+            // Pass through if any sibling view has a hit (tabs, buttons, etc.).
+            // Only capture truly empty space for window drag.
             if let superview {
                 for sibling in superview.subviews.reversed() where sibling !== self {
                     guard !sibling.isHidden, sibling.alphaValue > 0 else { continue }
                     let siblingPoint = convert(point, to: sibling)
-                    if let hit = sibling.hitTest(siblingPoint) {
-                        // If the hit view is a button or has an action, pass through.
-                        if hit is NSButton || hit.responds(to: #selector(NSControl.sendAction(_:to:))) {
-                            return nil
-                        }
+                    if sibling.hitTest(siblingPoint) != nil {
+                        return nil
                     }
                 }
             }
