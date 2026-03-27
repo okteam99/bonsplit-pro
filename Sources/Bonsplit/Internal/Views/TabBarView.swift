@@ -100,10 +100,21 @@ struct TabBarView: View {
         isFocused && controlKeyMonitor.isShortcutHintVisible
     }
 
+    @State private var needsTrafficLightInset = false
+
+    private func updateTrafficLightInset(geo: GeometryProxy) {
+        // In minimal mode, if this tab bar is near the window's leading edge
+        // (no sidebar to the left), add space for the traffic light buttons.
+        let needs = presentationMode == "minimal" && geo.frame(in: .global).minX < 20
+        if needsTrafficLightInset != needs {
+            needsTrafficLightInset = needs
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            if appearance.tabBarLeadingInset > 0 {
-                Spacer().frame(width: appearance.tabBarLeadingInset)
+            if needsTrafficLightInset {
+                Spacer().frame(width: 72)
             }
             // Scrollable tabs with fade overlays
             GeometryReader { containerGeo in
@@ -204,6 +215,17 @@ struct TabBarView: View {
         .onHover { isHoveringTabBar = $0 }
         .background(tabBarBackground)
         .overlay(TabBarWindowDragView())
+        .background(
+            GeometryReader { geo in
+                Color.clear.onChange(of: presentationMode) { _, _ in
+                    updateTrafficLightInset(geo: geo)
+                }
+                .onChange(of: geo.frame(in: .global).minX) { _, _ in
+                    updateTrafficLightInset(geo: geo)
+                }
+                .onAppear { updateTrafficLightInset(geo: geo) }
+            }
+        )
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
