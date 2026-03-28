@@ -660,9 +660,13 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         }
 
         private func updateLeadingEdge() {
-            guard let window else { return }
-            let windowPoint = convert(NSPoint.zero, to: window.contentView)
-            let needsInset = isMinimalMode && windowPoint.x < 20
+            guard let window, let contentView = window.contentView else { return }
+            let windowPoint = convert(NSPoint.zero, to: contentView)
+            // Only the top-left pane needs the traffic light inset. Check both
+            // that we're near the leading edge (x < 20) and near the top of
+            // the window (within ~40pt of the content view top).
+            let distFromTop = contentView.bounds.height - (windowPoint.y + bounds.height)
+            let needsInset = isMinimalMode && windowPoint.x < 20 && distFromTop < 40
             onLeadingEdgeChanged?(needsInset)
         }
 
