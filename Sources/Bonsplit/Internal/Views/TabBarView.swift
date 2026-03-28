@@ -710,13 +710,18 @@ private struct TabBarWindowDragView: NSViewRepresentable {
         }
 
         private static func isInteractiveControl(_ view: NSView) -> Bool {
-            if view is NSButton || view is NSControl { return true }
-            // SwiftUI buttons are rendered inside hosting views whose class
-            // name contains "Button" or "PlatformButton".
-            let className = String(describing: type(of: view))
-            if className.contains("Button") || className.contains("Segmented") { return true }
-            // Check the accessibility role for button-like elements.
-            if view.accessibilityRole() == .button { return true }
+            // Walk up the view hierarchy (up to 10 levels) to check if the
+            // hit view or any ancestor is a button or control. SwiftUI buttons
+            // are nested inside several wrapper views.
+            var current: NSView? = view
+            for _ in 0..<10 {
+                guard let v = current else { break }
+                if v is NSButton || v is NSControl { return true }
+                let className = String(describing: type(of: v))
+                if className.contains("Button") || className.contains("Segmented") { return true }
+                if v.accessibilityRole() == .button { return true }
+                current = v.superview
+            }
             return false
         }
 
