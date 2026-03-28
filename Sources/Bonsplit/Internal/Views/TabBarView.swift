@@ -693,16 +693,31 @@ private struct TabBarWindowDragView: NSViewRepresentable {
             guard NSApp.currentEvent?.type == .leftMouseDown else { return nil }
             guard UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" else { return nil }
             guard bounds.contains(point) else { return nil }
-            // Check if any interactive view is under this point. Hide self
-            // from the traversal via the reentrancy guard.
+            // Check if a real interactive control is under this point. Hide
+            // self from the traversal via the reentrancy guard. SwiftUI hosting
+            // views always claim hits (due to .contentShape), so check if the
+            // hit is a concrete control vs a generic hosting/layout view.
             if let window, let contentView = window.contentView {
                 let windowPoint = convert(point, to: contentView)
                 isResolvingUnderlying = true
                 let hit = contentView.hitTest(windowPoint)
                 isResolvingUnderlying = false
-                if hit != nil { return nil }
+                if let hit, Self.isInteractiveControl(hit) {
+                    return nil
+                }
             }
             return self
+        }
+
+        private static func isInteractiveControl(_ view: NSView) -> Bool {
+            if view is NSButton || view is NSControl { return true }
+            // SwiftUI buttons are rendered inside hosting views whose class
+            // name contains "Button" or "PlatformButton".
+            let className = String(describing: type(of: view))
+            if className.contains("Button") || className.contains("Segmented") { return true }
+            // Check the accessibility role for button-like elements.
+            if view.accessibilityRole() == .button { return true }
+            return false
         }
 
         override func mouseDown(with event: NSEvent) {
