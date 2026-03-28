@@ -683,19 +683,24 @@ private struct TabBarWindowDragView: NSViewRepresentable {
 
     final class DraggableTabBarView: NSView {
         override var mouseDownCanMoveWindow: Bool { false }
+        private var isResolvingUnderlying = false
 
         override func hitTest(_ point: NSPoint) -> NSView? {
+            // Reentrancy guard: when checking what's underneath, the
+            // contentView.hitTest traversal reaches us again. Return nil
+            // so the hit test finds the view below instead.
+            guard !isResolvingUnderlying else { return nil }
             guard NSApp.currentEvent?.type == .leftMouseDown else { return nil }
             guard UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal" else { return nil }
             guard bounds.contains(point) else { return nil }
-            // Check the full window content view for a hit at this point.
-            // If any other view claims the hit, pass through (tabs, buttons).
-            // Only capture truly empty space for window drag.
+            // Check if any interactive view is under this point. Hide self
+            // from the traversal via the reentrancy guard.
             if let window, let contentView = window.contentView {
                 let windowPoint = convert(point, to: contentView)
-                if let hit = contentView.hitTest(windowPoint), hit !== self {
-                    return nil
-                }
+                isResolvingUnderlying = true
+                let hit = contentView.hitTest(windowPoint)
+                isResolvingUnderlying = false
+                if hit != nil { return nil }
             }
             return self
         }
