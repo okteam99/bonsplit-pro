@@ -182,28 +182,19 @@ struct TabBarView: View {
                     }
                 }
                 .frame(height: TabBarMetrics.barHeight)
-                .mask(fadeOverlays)
-                // Split buttons + fade mask behind them, all fading in/out together.
+                .mask(combinedMask)
+                // Buttons float on top. No backdrop color needed because
+                // the mask hides scroll content and the tab bar's own
+                // background shows through naturally.
                 .overlay(alignment: .trailing) {
                     if showSplitButtons {
                         let shouldShow = presentationMode != "minimal" || isHoveringTabBar
-                        let bg = Color(nsColor: Self.buttonBackdropColor(for: appearance, focused: isFocused, style: fadeColorStyle))
-                        ZStack(alignment: .trailing) {
-                            // Backdrop: fade gradient then solid
-                            HStack(spacing: 0) {
-                                LinearGradient(colors: [bg.opacity(0), bg], startPoint: .leading, endPoint: .trailing)
-                                    .frame(width: 24)
-                                Rectangle().fill(bg)
-                            }
-                            .frame(width: 114)
-                            // Buttons on top
-                            splitButtons
-                                .saturation(tabBarSaturation)
-                        }
-                        .padding(.bottom, 1)
-                        .opacity(shouldShow ? 1 : 0)
-                        .allowsHitTesting(shouldShow)
-                        .animation(.easeInOut(duration: 0.14), value: shouldShow)
+                        splitButtons
+                            .saturation(tabBarSaturation)
+                            .padding(.bottom, 1)
+                            .opacity(shouldShow ? 1 : 0)
+                            .allowsHitTesting(shouldShow)
+                            .animation(.easeInOut(duration: 0.14), value: shouldShow)
                     }
                 }
             }
@@ -577,6 +568,35 @@ struct TabBarView: View {
         let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
         let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
         return NSColor(red: r, green: g, blue: b, alpha: 1.0)
+    }
+
+    // MARK: - Combined Mask (scroll fades + button area)
+
+    @ViewBuilder
+    private var combinedMask: some View {
+        let fadeWidth: CGFloat = 24
+        let shouldShowButtons = showSplitButtons && (presentationMode != "minimal" || isHoveringTabBar)
+        let buttonClearWidth: CGFloat = shouldShowButtons ? 90 : 0
+        let buttonFadeWidth: CGFloat = shouldShowButtons ? fadeWidth : 0
+
+        HStack(spacing: 0) {
+            // Left scroll fade
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: canScrollLeft ? fadeWidth : 0)
+
+            // Visible content area
+            Rectangle().fill(Color.black)
+
+            // Right: either scroll fade or button area fade
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: canScrollRight || shouldShowButtons ? fadeWidth : 0)
+
+            // Button clear area (content hidden here)
+            if shouldShowButtons {
+                Color.clear.frame(width: buttonClearWidth)
+            }
+        }
+        .animation(.easeInOut(duration: 0.14), value: shouldShowButtons)
     }
 
     // MARK: - Fade Overlays
