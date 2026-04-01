@@ -75,12 +75,16 @@ struct TabBarView: View {
     @State private var selectedTabFrameInBar: CGRect?
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
 
+    private let trailingDropZoneWidth: CGFloat = 30
+
     private var canScrollLeft: Bool {
         scrollOffset > 1
     }
 
     private var canScrollRight: Bool {
-        contentWidth > containerWidth && scrollOffset < contentWidth - containerWidth - 1
+        let effectiveContentWidth = max(0, contentWidth - trailingDropZoneWidth)
+        return effectiveContentWidth > containerWidth
+            && scrollOffset < effectiveContentWidth - containerWidth - 1
     }
 
     /// Whether this tab bar should show full saturation (focused or drag source)
@@ -437,7 +441,7 @@ struct TabBarView: View {
             controller.requestNewTab(kind: "terminal", inPane: pane.id)
             return true
         }
-        .frame(width: 30, height: TabBarMetrics.tabHeight)
+        .frame(width: trailingDropZoneWidth, height: TabBarMetrics.tabHeight)
         .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
             targetIndex: pane.tabs.count,
             pane: pane,
