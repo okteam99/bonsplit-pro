@@ -576,8 +576,8 @@ struct TabBarView: View {
     private var combinedMask: some View {
         let fadeWidth: CGFloat = 24
         let shouldShowButtons = showSplitButtons && (presentationMode != "minimal" || isHoveringTabBar)
-        let buttonClearWidth: CGFloat = shouldShowButtons ? 90 : 0
-        let buttonFadeWidth: CGFloat = shouldShowButtons ? fadeWidth : 0
+        let shouldReserveButtonSpace = showSplitButtons
+        let buttonClearWidth: CGFloat = shouldReserveButtonSpace ? 90 : 0
 
         HStack(spacing: 0) {
             // Left scroll fade
@@ -589,14 +589,14 @@ struct TabBarView: View {
 
             // Right: either scroll fade or button area fade
             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollRight || shouldShowButtons ? fadeWidth : 0)
+                .frame(width: canScrollRight || shouldReserveButtonSpace ? fadeWidth : 0)
 
             // Button clear area (content hidden here)
-            if shouldShowButtons {
+            if shouldReserveButtonSpace {
                 Color.clear.frame(width: buttonClearWidth)
             }
         }
-        .animation(.easeInOut(duration: 0.14), value: shouldShowButtons)
+        .animation(.easeInOut(duration: 0.14), value: showSplitButtons)
     }
 
     // MARK: - Fade Overlays
