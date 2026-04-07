@@ -118,7 +118,10 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
 
         // Keep arranged subviews stable (always 2) to avoid transient "collapse" flashes when
         // replacing pane<->split content. We swap the hosted content within these containers.
-        let firstContainer = NSView()
+        // The containers use `SplitArrangedContainerView` (rather than bare NSView) so they
+        // override `mouseDownCanMoveWindow=false` — see `NonDraggableHostingView` in
+        // SplitNodeView.swift for the regression this guards against.
+        let firstContainer = SplitArrangedContainerView()
         firstContainer.wantsLayer = true
         firstContainer.layer?.backgroundColor = NSColor.clear.cgColor
         firstContainer.layer?.isOpaque = false
@@ -128,7 +131,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         splitView.addArrangedSubview(firstContainer)
         context.coordinator.firstHostingController = firstController
 
-        let secondContainer = NSView()
+        let secondContainer = SplitArrangedContainerView()
         secondContainer.wantsLayer = true
         secondContainer.layer?.backgroundColor = NSColor.clear.cgColor
         secondContainer.layer?.isOpaque = false
@@ -356,8 +359,8 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
 
     // MARK: - Helpers
 
-    private func makeHostingController(for node: SplitNode) -> NSHostingController<AnyView> {
-        let hostingController = NSHostingController(rootView: AnyView(makeView(for: node)))
+    private func makeHostingController(for node: SplitNode) -> NonDraggableHostingController<AnyView> {
+        let hostingController = NonDraggableHostingController(rootView: AnyView(makeView(for: node)))
         if #available(macOS 13.0, *) {
             // NSSplitView owns pane geometry. Keep NSHostingController from publishing
             // intrinsic-size constraints that force a minimum pane width.
@@ -379,7 +382,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         return hostingController
     }
 
-    private func installHostingController(_ hostingController: NSHostingController<AnyView>, into container: NSView) {
+    private func installHostingController(_ hostingController: NonDraggableHostingController<AnyView>, into container: NSView) {
         let hostedView = hostingController.view
         hostedView.frame = container.bounds
         hostedView.autoresizingMask = [.width, .height]
@@ -392,7 +395,7 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         in container: NSView,
         node: SplitNode,
         nodeTypeChanged: Bool,
-        controller: inout NSHostingController<AnyView>?
+        controller: inout NonDraggableHostingController<AnyView>?
     ) {
         // Historically we recreated the NSHostingController when the child node type changed
         // (pane <-> split) to force a full detach/reattach of native AppKit subviews.
@@ -469,8 +472,8 @@ struct SplitContainerView<Content: View, EmptyContent: View>: NSViewRepresentabl
         var firstNodeType: SplitNode.NodeType
         var secondNodeType: SplitNode.NodeType
         /// Retain hosting controllers so SwiftUI content stays alive
-        var firstHostingController: NSHostingController<AnyView>?
-        var secondHostingController: NSHostingController<AnyView>?
+        var firstHostingController: NonDraggableHostingController<AnyView>?
+        var secondHostingController: NonDraggableHostingController<AnyView>?
 
         init(
             splitState: SplitState,

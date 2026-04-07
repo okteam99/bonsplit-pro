@@ -183,18 +183,40 @@ struct TabBarView: View {
                 }
                 .frame(height: TabBarMetrics.barHeight)
                 .mask(combinedMask)
-                // Buttons float on top. No backdrop color needed because
-                // the mask hides scroll content and the tab bar's own
-                // background shows through naturally.
+                // Split buttons sit on top of the tab strip in their own opaque backdrop.
+                // The backdrop visually obscures any tabs that scroll under the buttons,
+                // and (critically) does not break hit testing on tabs outside the backdrop —
+                // unlike the prior approach of using a `Color.clear` region in `combinedMask`,
+                // which silently blocked SwiftUI hit tests in the masked-out area and let
+                // tab clicks fall through to `TabBarDragAndHoverView` (which performs a
+                // window drag in minimal mode).
                 .overlay(alignment: .trailing) {
                     if showSplitButtons {
                         let shouldShow = presentationMode != "minimal" || isHoveringTabBar
-                        splitButtons
-                            .saturation(tabBarSaturation)
-                            .padding(.bottom, 1)
-                            .opacity(shouldShow ? 1 : 0)
-                            .allowsHitTesting(shouldShow)
-                            .animation(.easeInOut(duration: 0.14), value: shouldShow)
+                        let backdropColor = Color(nsColor: Self.buttonBackdropColor(
+                            for: appearance,
+                            focused: isFocused,
+                            style: fadeColorStyle
+                        ))
+                        ZStack(alignment: .trailing) {
+                            HStack(spacing: 0) {
+                                LinearGradient(
+                                    colors: [backdropColor.opacity(0), backdropColor],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 24)
+                                Rectangle().fill(backdropColor)
+                            }
+                            .frame(width: 114)
+
+                            splitButtons
+                                .saturation(tabBarSaturation)
+                        }
+                        .padding(.bottom, 1)
+                        .opacity(shouldShow ? 1 : 0)
+                        .allowsHitTesting(shouldShow)
+                        .animation(.easeInOut(duration: 0.14), value: shouldShow)
                     }
                 }
             }
@@ -571,32 +593,31 @@ struct TabBarView: View {
     }
 
     // MARK: - Combined Mask (scroll fades + button area)
+    //
+    // IMPORTANT: SwiftUI's `.mask()` with `Color.clear` regions blocks hit testing on the
+    // masked content in those regions. Previously this mask used a 90pt clear region at the
+    // trailing edge to hide tabs under the split buttons; that caused clicks on tabs in that
+    // 90pt area to fall through the masked ScrollView to the `TabBarDragAndHoverView`
+    // background, which (in minimal mode) interpreted the click as a window drag instead
+    // of a tab tap. Keep the entire mask opaque so hit testing works on every tab; the split
+    // buttons' opaque backdrop (rendered in the splitButtons overlay) handles the visual
+    // obscuring of tabs underneath.
 
     @ViewBuilder
     private var combinedMask: some View {
         let fadeWidth: CGFloat = 24
-        let shouldShowButtons = showSplitButtons && (presentationMode != "minimal" || isHoveringTabBar)
-        let buttonClearWidth: CGFloat = shouldShowButtons ? 90 : 0
-        let buttonFadeWidth: CGFloat = shouldShowButtons ? fadeWidth : 0
-
         HStack(spacing: 0) {
             // Left scroll fade
             LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
                 .frame(width: canScrollLeft ? fadeWidth : 0)
 
-            // Visible content area
+            // Visible content area (always opaque so hit testing reaches the tabs)
             Rectangle().fill(Color.black)
 
-            // Right: either scroll fade or button area fade
+            // Right scroll fade only when scroll content actually overflows.
             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollRight || shouldShowButtons ? fadeWidth : 0)
-
-            // Button clear area (content hidden here)
-            if shouldShowButtons {
-                Color.clear.frame(width: buttonClearWidth)
-            }
+                .frame(width: canScrollRight ? fadeWidth : 0)
         }
-        .animation(.easeInOut(duration: 0.14), value: shouldShowButtons)
     }
 
     // MARK: - Fade Overlays
@@ -713,6 +734,9 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
+#if DEBUG
+            dlog("tab.bar.bg.mouseDown isMinimal=\(isMinimalMode ? 1 : 0) clickCount=\(event.clickCount)")
+#endif
             guard isMinimalMode, let window else {
                 super.mouseDown(with: event)
                 return
@@ -760,6 +784,10 @@ private struct TabBarDragZoneView: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
+#if DEBUG
+            let isMinimal = UserDefaults.standard.string(forKey: "workspacePresentationMode") == "minimal"
+            dlog("tab.bar.dragZone.mouseDown isMinimal=\(isMinimal ? 1 : 0) clickCount=\(event.clickCount)")
+#endif
             guard let window = self.window else {
                 super.mouseDown(with: event)
                 return
