@@ -119,7 +119,7 @@ struct TabItemView: View {
                 .onChange(of: tab.icon) { _ in updateGlobeFallback() }
 
                 Text(tab.title)
-                    .font(.system(size: TabBarMetrics.titleFontSize))
+                    .font(.system(size: appearance.tabTitleFontSize))
                     .lineLimit(1)
                     .foregroundStyle(
                         isSelected
@@ -133,7 +133,7 @@ struct TabItemView: View {
                         onZoomToggle()
                     } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: max(8, TabBarMetrics.titleFontSize - 2), weight: .semibold))
+                            .font(.system(size: max(8, appearance.tabTitleFontSize - 2), weight: .semibold))
                             .foregroundStyle(
                                 isZoomHovered
                                     ? TabBarColors.activeText(for: appearance)
@@ -224,7 +224,7 @@ struct TabItemView: View {
     }
 
     private func shortcutHintWidth(for label: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: max(8, TabBarMetrics.titleFontSize - 2), weight: .semibold)
+        let font = NSFont.systemFont(ofSize: max(8, appearance.tabTitleFontSize - 2), weight: .semibold)
         let textWidth = (label as NSString).size(withAttributes: [.font: font]).width
         return ceil(textWidth) + 8
     }
@@ -234,7 +234,7 @@ struct TabItemView: View {
         ZStack(alignment: .center) {
             if let shortcutHintLabel {
                 Text(shortcutHintLabel)
-                    .font(.system(size: max(8, TabBarMetrics.titleFontSize - 2), weight: .semibold, design: .rounded))
+                    .font(.system(size: max(8, appearance.tabTitleFontSize - 2), weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
