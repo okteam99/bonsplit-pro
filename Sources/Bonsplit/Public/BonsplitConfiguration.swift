@@ -155,6 +155,9 @@ extension BonsplitConfiguration {
         /// Maximum width of a tab
         public var tabMaxWidth: CGFloat
 
+        /// Font size for tab titles in the surface tab bar
+        public var tabTitleFontSize: CGFloat
+
         /// Spacing between tabs
         public var tabSpacing: CGFloat
 
@@ -198,13 +201,15 @@ extension BonsplitConfiguration {
         public static let compact = Appearance(
             tabBarHeight: 28,
             tabMinWidth: 100,
-            tabMaxWidth: 160
+            tabMaxWidth: 160,
+            tabTitleFontSize: 11
         )
 
         public static let spacious = Appearance(
             tabBarHeight: 38,
             tabMinWidth: 160,
             tabMaxWidth: 280,
+            tabTitleFontSize: 11,
             tabSpacing: 2
         )
 
@@ -214,6 +219,7 @@ extension BonsplitConfiguration {
             tabBarHeight: CGFloat = 33,
             tabMinWidth: CGFloat = 140,
             tabMaxWidth: CGFloat = 220,
+            tabTitleFontSize: CGFloat = 11,
             tabSpacing: CGFloat = 0,
             minimumPaneWidth: CGFloat = 100,
             minimumPaneHeight: CGFloat = 100,
@@ -228,6 +234,7 @@ extension BonsplitConfiguration {
             self.tabBarHeight = tabBarHeight
             self.tabMinWidth = tabMinWidth
             self.tabMaxWidth = tabMaxWidth
+            self.tabTitleFontSize = tabTitleFontSize
             self.tabSpacing = tabSpacing
             self.minimumPaneWidth = minimumPaneWidth
             self.minimumPaneHeight = minimumPaneHeight
