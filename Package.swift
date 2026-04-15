@@ -23,6 +23,11 @@ let package = Package(
                 .process("Resources")
             ]
         ),
+        .executableTarget(
+            name: "BonsplitTabChromeDebugCLI",
+            dependencies: ["Bonsplit"],
+            path: "Sources/BonsplitTabChromeDebugCLI"
+        ),
         .testTarget(
             name: "BonsplitTests",
             dependencies: ["Bonsplit"],

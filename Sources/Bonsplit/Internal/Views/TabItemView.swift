@@ -74,28 +74,7 @@ struct TabItemView: View {
                     : TabBarColors.inactiveText(for: appearance)
                 let faviconImage = renderedFaviconImage ?? tab.iconImageData.flatMap { NSImage(data: $0) }
 
-                Group {
-                    if tab.isLoading {
-                        // Slightly smaller than the icon slot so it reads cleaner at tab scale.
-                        TabLoadingSpinner(size: iconSlotSize * 0.86, color: iconTint)
-                    } else if let image = faviconImage {
-                        FaviconIconView(image: image)
-                            .frame(width: iconSlotSize, height: iconSlotSize, alignment: .center)
-                            .clipped()
-                    } else if let iconName = tab.icon {
-                        if iconName == "globe", !showGlobeFallback {
-                            // Avoid a distracting "globe -> favicon" flash: show a neutral placeholder
-                            // briefly while the favicon fetch finishes. If no favicon arrives, we
-                            // reveal the globe after a short delay.
-                            RoundedRectangle(cornerRadius: 3)
-                                .stroke(iconTint.opacity(0.25), lineWidth: 1)
-                        } else {
-                            Image(systemName: iconName)
-                                .font(.system(size: glyphSize(for: iconName)))
-                                .foregroundStyle(iconTint)
-                        }
-                    }
-                }
+                iconContent(iconSlotSize: iconSlotSize, iconTint: iconTint, faviconImage: faviconImage)
                 // Keep downloaded favicon bitmaps in full color even for inactive tab bars.
                 .saturation(TabItemStyling.iconSaturation(hasRasterIcon: faviconImage != nil, tabSaturation: saturation))
                 .transaction { tx in
@@ -119,7 +98,7 @@ struct TabItemView: View {
                 .onChange(of: tab.icon) { _ in updateGlobeFallback() }
 
                 Text(tab.title)
-                    .font(.system(size: TabBarMetrics.titleFontSize))
+                    .font(.system(size: appearance.tabTitleFontSize))
                     .lineLimit(1)
                     .foregroundStyle(
                         isSelected
@@ -133,19 +112,20 @@ struct TabItemView: View {
                         onZoomToggle()
                     } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: max(8, TabBarMetrics.titleFontSize - 2), weight: .semibold))
+                            .font(.system(size: accessoryFontSize, weight: .semibold))
                             .foregroundStyle(
-                                isZoomHovered
+                                resolvedIsZoomHovered || resolvedIsZoomPressed
                                     ? TabBarColors.activeText(for: appearance)
                                     : TabBarColors.inactiveText(for: appearance)
                             )
-                            .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+                            .frame(width: accessorySlotSize, height: accessorySlotSize)
                             .background(
                                 Circle()
                                     .fill(
-                                        isZoomHovered
-                                            ? TabBarColors.hoveredTabBackground(for: appearance)
-                                            : .clear
+                                        accessoryBackgroundColor(
+                                            isHovered: resolvedIsZoomHovered,
+                                            isPressed: resolvedIsZoomPressed
+                                        )
                                     )
                             )
                     }
@@ -206,6 +186,41 @@ struct TabItemView: View {
         return TabBarMetrics.iconSize
     }
 
+    @ViewBuilder
+    private func iconContent(
+        iconSlotSize: CGFloat,
+        iconTint: Color,
+        faviconImage: NSImage?
+    ) -> some View {
+        let spinnerSize = iconSlotSize * 0.86
+        let spinnerPhaseDegrees = resolvedSpinnerPhaseDegrees
+
+        if tab.isLoading {
+            // Slightly smaller than the icon slot so it reads cleaner at tab scale.
+            TabLoadingSpinner(
+                size: spinnerSize,
+                color: iconTint,
+                fixedPhaseDegrees: spinnerPhaseDegrees
+            )
+        } else if let faviconImage {
+            FaviconIconView(image: faviconImage)
+                .frame(width: iconSlotSize, height: iconSlotSize, alignment: .center)
+                .clipped()
+        } else if let iconName = tab.icon {
+            if iconName == "globe", !showGlobeFallback {
+                // Avoid a distracting "globe -> favicon" flash: show a neutral placeholder
+                // briefly while the favicon fetch finishes. If no favicon arrives, we
+                // reveal the globe after a short delay.
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(iconTint.opacity(0.25), lineWidth: 1)
+            } else {
+                Image(systemName: iconName)
+                    .font(.system(size: glyphSize(for: iconName)))
+                    .foregroundStyle(iconTint)
+            }
+        }
+    }
+
     private var shortcutHintLabel: String? {
         guard let controlShortcutDigit else { return nil }
         return "\(shortcutModifierSymbol)\(controlShortcutDigit)"
@@ -217,14 +232,22 @@ struct TabItemView: View {
 
     private var shortcutHintSlotWidth: CGFloat {
         guard let label = shortcutHintLabel else {
-            return TabBarMetrics.closeButtonSize
+            return accessorySlotSize
         }
         let positiveDebugInset = max(0, CGFloat(TabControlShortcutHintDebugSettings.clamped(controlShortcutHintXOffset))) + 2
-        return max(TabBarMetrics.closeButtonSize, shortcutHintWidth(for: label) + positiveDebugInset)
+        return max(accessorySlotSize, shortcutHintWidth(for: label) + positiveDebugInset)
+    }
+
+    private var accessoryFontSize: CGFloat {
+        max(8, appearance.tabTitleFontSize - 2)
+    }
+
+    private var accessorySlotSize: CGFloat {
+        min(TabBarMetrics.tabHeight, max(TabBarMetrics.closeButtonSize, ceil(accessoryFontSize + 4)))
     }
 
     private func shortcutHintWidth(for label: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: max(8, TabBarMetrics.titleFontSize - 2), weight: .semibold)
+        let font = NSFont.systemFont(ofSize: accessoryFontSize, weight: .semibold)
         let textWidth = (label as NSString).size(withAttributes: [.font: font]).width
         return ceil(textWidth) + 8
     }
@@ -234,15 +257,15 @@ struct TabItemView: View {
         ZStack(alignment: .center) {
             if let shortcutHintLabel {
                 Text(shortcutHintLabel)
-                    .font(.system(size: max(8, TabBarMetrics.titleFontSize - 2), weight: .semibold, design: .rounded))
+                    .font(.system(size: accessoryFontSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                    .foregroundStyle(
-                        isSelected
-                            ? TabBarColors.activeText(for: appearance)
-                            : TabBarColors.inactiveText(for: appearance)
-                    )
+                .foregroundStyle(
+                    isSelected
+                        ? TabBarColors.activeText(for: appearance)
+                        : TabBarColors.inactiveText(for: appearance)
+                )
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(
@@ -266,7 +289,7 @@ struct TabItemView: View {
                 .opacity(showsShortcutHint ? 0 : 1)
                 .allowsHitTesting(!showsShortcutHint)
         }
-        .frame(width: shortcutHintSlotWidth, height: TabBarMetrics.closeButtonSize, alignment: .center)
+        .frame(width: shortcutHintSlotWidth, height: accessorySlotSize, alignment: .center)
         .animation(.easeInOut(duration: 0.14), value: showsShortcutHint)
     }
 
@@ -427,7 +450,7 @@ struct TabItemView: View {
     private var tabBackground: some View {
         ZStack(alignment: .top) {
             // Background fill (hover)
-            if TabItemStyling.shouldShowHoverBackground(isHovered: isHovered, isSelected: isSelected) {
+            if TabItemStyling.shouldShowHoverBackground(isHovered: resolvedIsHovered, isSelected: isSelected) {
                 Rectangle()
                     .fill(TabBarColors.hoveredTabBackground(for: appearance))
             } else {
@@ -457,7 +480,7 @@ struct TabItemView: View {
     private var closeOrDirtyIndicator: some View {
         ZStack {
             // Dirty indicator (shown when dirty and not hovering, hidden for selected tab)
-            if (!isSelected && !isHovered && !isCloseHovered) && (tab.isDirty || tab.showsNotificationBadge) {
+            if (!isSelected && !resolvedIsHovered && !resolvedIsCloseHovered) && (tab.isDirty || tab.showsNotificationBadge) {
                 HStack(spacing: 2) {
                     if tab.showsNotificationBadge {
                         Circle()
@@ -474,14 +497,14 @@ struct TabItemView: View {
             }
 
             if tab.isPinned {
-                if isSelected || isHovered || isCloseHovered || (!tab.isDirty && !tab.showsNotificationBadge) {
+                if isSelected || resolvedIsHovered || resolvedIsCloseHovered || (!tab.isDirty && !tab.showsNotificationBadge) {
                     Image(systemName: "pin.fill")
                         .font(.system(size: TabBarMetrics.closeIconSize, weight: .semibold))
                         .foregroundStyle(TabBarColors.inactiveText(for: appearance))
-                        .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+                        .frame(width: accessorySlotSize, height: accessorySlotSize)
                         .saturation(saturation)
                 }
-            } else if isSelected || isHovered || isCloseHovered {
+            } else if isSelected || resolvedIsHovered || resolvedIsCloseHovered {
                 // Close button (always visible on active tab, shown on hover for others)
                 Button {
                     onClose()
@@ -489,17 +512,18 @@ struct TabItemView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: TabBarMetrics.closeIconSize, weight: .semibold))
                         .foregroundStyle(
-                            isCloseHovered
+                            resolvedIsCloseHovered || resolvedIsClosePressed
                                 ? TabBarColors.activeText(for: appearance)
                                 : TabBarColors.inactiveText(for: appearance)
                         )
-                        .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
+                        .frame(width: accessorySlotSize, height: accessorySlotSize)
                         .background(
                             Circle()
                                 .fill(
-                                    isCloseHovered
-                                        ? TabBarColors.hoveredTabBackground(for: appearance)
-                                        : .clear
+                                    accessoryBackgroundColor(
+                                        isHovered: resolvedIsCloseHovered,
+                                        isPressed: resolvedIsClosePressed
+                                    )
                                 )
                         )
                 }
@@ -511,28 +535,89 @@ struct TabItemView: View {
             }
         }
         .frame(width: TabBarMetrics.closeButtonSize, height: TabBarMetrics.closeButtonSize)
-        .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: isHovered)
-        .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: isCloseHovered)
+        .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: resolvedIsHovered)
+        .animation(.easeInOut(duration: TabBarMetrics.hoverDuration), value: resolvedIsCloseHovered)
+    }
+
+    private func accessoryBackgroundColor(isHovered: Bool, isPressed: Bool) -> Color {
+        if isPressed {
+            return TabBarColors.activeTabBackground(for: appearance)
+        }
+        if isHovered {
+            return TabBarColors.hoveredTabBackground(for: appearance)
+        }
+        return .clear
+    }
+
+    private var resolvedIsHovered: Bool {
+#if DEBUG
+        BonsplitTabChromeDebugContext.current?.isHovered ?? isHovered
+#else
+        isHovered
+#endif
+    }
+
+    private var resolvedIsCloseHovered: Bool {
+#if DEBUG
+        BonsplitTabChromeDebugContext.current?.isCloseHovered ?? isCloseHovered
+#else
+        isCloseHovered
+#endif
+    }
+
+    private var resolvedIsClosePressed: Bool {
+#if DEBUG
+        BonsplitTabChromeDebugContext.current?.isClosePressed ?? false
+#else
+        false
+#endif
+    }
+
+    private var resolvedIsZoomHovered: Bool {
+#if DEBUG
+        BonsplitTabChromeDebugContext.current?.isZoomHovered ?? isZoomHovered
+#else
+        isZoomHovered
+#endif
+    }
+
+    private var resolvedIsZoomPressed: Bool {
+#if DEBUG
+        BonsplitTabChromeDebugContext.current?.isZoomPressed ?? false
+#else
+        false
+#endif
+    }
+
+    private var resolvedSpinnerPhaseDegrees: Double? {
+#if DEBUG
+        BonsplitTabChromeDebugContext.current?.fixedSpinnerPhaseDegrees
+#else
+        nil
+#endif
     }
 }
 
 private struct TabLoadingSpinner: View {
     let size: CGFloat
     let color: Color
+    let fixedPhaseDegrees: Double?
+
+    init(size: CGFloat, color: Color, fixedPhaseDegrees: Double? = nil) {
+        self.size = size
+        self.color = color
+        self.fixedPhaseDegrees = fixedPhaseDegrees
+    }
 
     var body: some View {
         TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            // 0.9s per revolution feels a bit snappier at tab-icon scale.
-            let angle = (t.truncatingRemainder(dividingBy: 0.9) / 0.9) * 360.0
-
             ZStack {
                 Circle()
                     .stroke(color.opacity(0.20), lineWidth: ringWidth)
                 Circle()
                     .trim(from: 0.0, to: 0.28)
                     .stroke(color, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
-                    .rotationEffect(.degrees(angle))
+                    .rotationEffect(.degrees(spinnerAngle(for: context.date)))
             }
             .frame(width: size, height: size)
         }
@@ -540,6 +625,15 @@ private struct TabLoadingSpinner: View {
 
     private var ringWidth: CGFloat {
         max(1.6, size * 0.14)
+    }
+
+    private func spinnerAngle(for date: Date) -> Double {
+        if let fixedPhaseDegrees {
+            return fixedPhaseDegrees
+        }
+        let t = date.timeIntervalSinceReferenceDate
+        // 0.9s per revolution feels a bit snappier at tab-icon scale.
+        return (t.truncatingRemainder(dividingBy: 0.9) / 0.9) * 360.0
     }
 }
 
