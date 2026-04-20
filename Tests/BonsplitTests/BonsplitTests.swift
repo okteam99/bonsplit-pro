@@ -1294,7 +1294,7 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertFalse(focused, "Focused-pane drag zone should not bounce through first-click focus")
         XCTAssertTrue(dragged, "Focused-pane drag zone should continue to start window drags in minimal mode")
-        XCTAssertTrue(view.mouseDownCanMoveWindow, "Focused-pane drag zone should continue advertising window dragging to AppKit")
+        XCTAssertFalse(view.mouseDownCanMoveWindow, "Focused-pane drag zone must not advertise window dragging to AppKit or AppKit steals mouseUp and breaks new-tab double-clicks")
     }
 
     private func withShortcutHintDefaultsSuite(_ body: (UserDefaults) -> Void) {

@@ -1100,9 +1100,14 @@ struct TabBarDragZoneView: NSViewRepresentable {
 
         private static let windowDragStartDistanceSquared: CGFloat = 16
 
-        override var mouseDownCanMoveWindow: Bool {
-            isMinimalMode && isFocusedPane
-        }
+        // Must stay false so AppKit does not intercept mouseUp as part of its
+        // own window-drag tracking. When AppKit steals mouseUp from the first
+        // click, the second click of a double-click is registered as a fresh
+        // clickCount=1 instead of 2, making new-tab double-clicks flaky. We
+        // still support window dragging via the custom mouseDragged →
+        // window.performDrag flow below. See `NonDraggableHostingView` in
+        // SplitNodeView.swift for the same class of bug on pane tab clicks.
+        override var mouseDownCanMoveWindow: Bool { false }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
             return bounds.contains(point) ? self : nil
