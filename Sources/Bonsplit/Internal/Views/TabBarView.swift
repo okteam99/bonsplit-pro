@@ -1095,6 +1095,9 @@ struct TabBarDragZoneView: NSViewRepresentable {
         var onSingleClick: (() -> Bool)?
         var onDoubleClick: (() -> Bool)?
         var performWindowDrag: ((NSEvent) -> Bool)?
+        var nextWindowDragEvent: ((NSWindow) -> NSEvent?)?
+
+        private static let windowDragStartDistanceSquared: CGFloat = 16
 
         override var mouseDownCanMoveWindow: Bool {
             isMinimalMode && isFocusedPane
@@ -1106,9 +1109,12 @@ struct TabBarDragZoneView: NSViewRepresentable {
 
         override func mouseDown(with event: NSEvent) {
 #if DEBUG
+            let point = convert(event.locationInWindow, from: nil)
             dlog(
                 "tab.bar.dragZone.mouseDown isMinimal=\(isMinimalMode ? 1 : 0) " +
-                "focused=\(isFocusedPane ? 1 : 0) clickCount=\(event.clickCount)"
+                "focused=\(isFocusedPane ? 1 : 0) clickCount=\(event.clickCount) " +
+                "point=\(point.x.rounded()),\(point.y.rounded()) " +
+                "bounds=\(bounds.width.rounded())x\(bounds.height.rounded())"
             )
 #endif
             guard let window = self.window else {
@@ -1117,17 +1123,19 @@ struct TabBarDragZoneView: NSViewRepresentable {
             }
 
             if event.clickCount >= 2 {
-                if isMinimalMode {
-                    let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
-                    switch action {
-                    case "Minimize": window.miniaturize(nil)
-                    default: window.zoom(nil)
-                    }
+                if onDoubleClick?() == true {
+#if DEBUG
+                    dlog("tab.bar.dragZone.doubleClick action=newTab")
+#endif
                     return
-                } else {
-                    if onDoubleClick?() == true {
-                        return
-                    }
+                }
+
+                if isMinimalMode {
+#if DEBUG
+                    dlog("tab.bar.dragZone.doubleClick action=titlebar")
+#endif
+                    performTitlebarDoubleClickAction(in: window)
+                    return
                 }
             }
 
@@ -1139,15 +1147,75 @@ struct TabBarDragZoneView: NSViewRepresentable {
             }
 
             if isMinimalMode {
-                if let performWindowDrag, performWindowDrag(event) {
-                    return
-                }
-                let wasMovable = window.isMovable
-                window.isMovable = true
-                window.performDrag(with: event)
-                window.isMovable = wasMovable
+                trackWindowDragIfNeeded(from: event, in: window)
             } else {
                 super.mouseDown(with: event)
+            }
+        }
+
+        private func trackWindowDragIfNeeded(from event: NSEvent, in window: NSWindow) {
+            let start = event.locationInWindow
+            while true {
+                guard let nextEvent = nextTrackedEvent(in: window) else {
+#if DEBUG
+                    dlog("tab.bar.dragZone.dragTrack.end reason=noEvent")
+#endif
+                    return
+                }
+
+                switch nextEvent.type {
+                case .leftMouseDragged:
+                    let dx = nextEvent.locationInWindow.x - start.x
+                    let dy = nextEvent.locationInWindow.y - start.y
+                    guard dx * dx + dy * dy >= Self.windowDragStartDistanceSquared else {
+                        continue
+                    }
+#if DEBUG
+                    dlog(
+                        "tab.bar.dragZone.dragStart " +
+                        "dx=\(dx.rounded()) dy=\(dy.rounded())"
+                    )
+#endif
+                    startWindowDrag(with: event, in: window)
+                    return
+                case .leftMouseUp:
+#if DEBUG
+                    dlog("tab.bar.dragZone.dragTrack.end reason=mouseUp")
+#endif
+                    return
+                default:
+                    continue
+                }
+            }
+        }
+
+        private func nextTrackedEvent(in window: NSWindow) -> NSEvent? {
+            if let nextWindowDragEvent {
+                return nextWindowDragEvent(window)
+            }
+            return window.nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp],
+                until: .distantFuture,
+                inMode: .eventTracking,
+                dequeue: true
+            )
+        }
+
+        private func startWindowDrag(with event: NSEvent, in window: NSWindow) {
+            if let performWindowDrag, performWindowDrag(event) {
+                return
+            }
+            let wasMovable = window.isMovable
+            window.isMovable = true
+            defer { window.isMovable = wasMovable }
+            window.performDrag(with: event)
+        }
+
+        private func performTitlebarDoubleClickAction(in window: NSWindow) {
+            let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
+            switch action {
+            case "Minimize": window.miniaturize(nil)
+            default: window.zoom(nil)
             }
         }
     }

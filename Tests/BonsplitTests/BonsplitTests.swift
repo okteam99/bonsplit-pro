@@ -1235,6 +1235,18 @@ final class BonsplitTests: XCTestCase {
         contentView.addSubview(view)
         window.makeKeyAndOrderFront(nil)
         let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 1)
+        let dragEvent = try makeMouseEvent(
+            type: .leftMouseDragged,
+            in: view,
+            at: NSPoint(x: 30, y: 15),
+            clickCount: 1
+        )
+        var returnedDragEvent = false
+        view.nextWindowDragEvent = { _ in
+            guard !returnedDragEvent else { return nil }
+            returnedDragEvent = true
+            return dragEvent
+        }
         view.mouseDown(with: event)
 
         XCTAssertFalse(focused, "Focused-pane drag zone should not bounce through first-click focus")
@@ -1343,12 +1355,22 @@ final class BonsplitTests: XCTestCase {
         at point: NSPoint,
         clickCount: Int
     ) throws -> NSEvent {
+        try makeMouseEvent(type: .leftMouseDown, in: view, at: point, clickCount: clickCount)
+    }
+
+    @MainActor
+    private func makeMouseEvent(
+        type: NSEvent.EventType,
+        in view: NSView,
+        at point: NSPoint,
+        clickCount: Int
+    ) throws -> NSEvent {
         guard let window = view.window else {
             throw NSError(domain: "BonsplitTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing window"])
         }
         let pointInWindow = view.convert(point, to: nil)
         guard let event = NSEvent.mouseEvent(
-            with: .leftMouseDown,
+            with: type,
             location: pointInWindow,
             modifierFlags: [],
             timestamp: ProcessInfo.processInfo.systemUptime,
