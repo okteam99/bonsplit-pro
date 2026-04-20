@@ -1166,6 +1166,44 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testTabBarDragZoneDoubleClickRequestsNewTabInMinimalMode() throws {
+        let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
+        view.isMinimalMode = true
+        view.isFocusedPane = true
+
+        var requestedNewTab = false
+        var dragged = false
+        view.onDoubleClick = {
+            requestedNewTab = true
+            return true
+        }
+        view.performWindowDrag = { _ in
+            dragged = true
+            return true
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 60),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        contentView.addSubview(view)
+        window.makeKeyAndOrderFront(nil)
+        let event = try makeLeftMouseDownEvent(in: view, at: NSPoint(x: 20, y: 15), clickCount: 2)
+        view.mouseDown(with: event)
+
+        XCTAssertTrue(requestedNewTab, "Minimal-mode drag zone double-click should request the new-tab action")
+        XCTAssertFalse(dragged, "Minimal-mode double-click should not start a window drag")
+    }
+
+    @MainActor
     func testTabBarDragZoneKeepsFocusedPaneWindowDragInMinimalMode() throws {
         let view = TabBarDragZoneView.DragNSView(frame: NSRect(x: 0, y: 0, width: 160, height: 30))
         view.isMinimalMode = true
