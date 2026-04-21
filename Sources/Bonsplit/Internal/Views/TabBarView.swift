@@ -425,8 +425,14 @@ struct TabBarView: View {
                         }
                         .frame(width: 0, height: 0)
                     )
-                    // When the tab strip is shorter than the visible area, allow dropping in the
-                    // empty trailing space without forcing tabs to stretch.
+                    // When the tab strip is shorter than the visible area, place a single
+                    // drag zone over both the empty trailing space AND the 30pt inline
+                    // dropZoneAfterTabs (extended leftward by 30pt). The inline zone's
+                    // DragNSView is then visually covered, so all clicks in this region land
+                    // on this overlay's single DragNSView. AppKit tracks `clickCount` per
+                    // view, so without this an unlucky shift in the inline/overlay boundary
+                    // between two clicks would split a double-click into two clickCount=1
+                    // events and the new-tab action would never fire.
                     .overlay(alignment: .trailing) {
                         let trailing = max(0, containerGeo.size.width - contentWidth)
                         if trailing >= 1 {
@@ -439,7 +445,7 @@ struct TabBarView: View {
                                 controller.requestNewTab(kind: "terminal", inPane: pane.id)
                                 return true
                             }
-                            .frame(width: trailing, height: TabBarMetrics.tabHeight)
+                            .frame(width: trailing + 30, height: TabBarMetrics.tabHeight)
                             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                                 targetIndex: pane.tabs.count,
                                 pane: pane,
@@ -1128,6 +1134,29 @@ struct TabBarDragZoneView: NSViewRepresentable {
                 return
             }
 
+            // Standard (non-minimal) mode: a click in the empty trailing area
+            // should create a new tab on the very first click, not require a
+            // double-click. We dedupe subsequent clicks of the same gesture so
+            // a real double-click doesn't create two tabs back-to-back.
+            if !isMinimalMode {
+                clearPendingWindowDrag()
+                if event.clickCount == 1 {
+                    if onDoubleClick?() == true {
+#if DEBUG
+                        dlog("tab.bar.dragZone.singleClick action=newTab")
+#endif
+                        return
+                    }
+                    super.mouseDown(with: event)
+                    return
+                }
+                // clickCount >= 2: same gesture as a click we already acted on.
+#if DEBUG
+                dlog("tab.bar.dragZone.click skipped reason=dedupeStandardMode clickCount=\(event.clickCount)")
+#endif
+                return
+            }
+
             if event.clickCount >= 2 {
                 clearPendingWindowDrag()
                 if onDoubleClick?() == true {
@@ -1137,16 +1166,14 @@ struct TabBarDragZoneView: NSViewRepresentable {
                     return
                 }
 
-                if isMinimalMode {
 #if DEBUG
-                    dlog("tab.bar.dragZone.doubleClick action=titlebar")
+                dlog("tab.bar.dragZone.doubleClick action=titlebar")
 #endif
-                    performTitlebarDoubleClickAction(in: window)
-                    return
-                }
+                performTitlebarDoubleClickAction(in: window)
+                return
             }
 
-            if isMinimalMode, !isFocusedPane, onSingleClick?() == true {
+            if !isFocusedPane, onSingleClick?() == true {
                 clearPendingWindowDrag()
 #if DEBUG
                 dlog("tab.bar.dragZone.focusPane")
@@ -1154,13 +1181,8 @@ struct TabBarDragZoneView: NSViewRepresentable {
                 return
             }
 
-            if isMinimalMode {
-                pendingWindowDragEvent = event
-                pendingWindowDragStart = event.locationInWindow
-            } else {
-                clearPendingWindowDrag()
-                super.mouseDown(with: event)
-            }
+            pendingWindowDragEvent = event
+            pendingWindowDragStart = event.locationInWindow
         }
 
         override func mouseDragged(with event: NSEvent) {
