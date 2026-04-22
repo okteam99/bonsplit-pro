@@ -849,7 +849,7 @@ final class BonsplitTests: XCTestCase {
 
     @MainActor
     func testDoubleClickingEmptyTrailingTabBarSpaceRequestsNewTerminalTab() {
-        let appearance = BonsplitConfiguration.Appearance(showSplitButtons: false)
+        let appearance = BonsplitConfiguration.Appearance()
         let configuration = BonsplitConfiguration(appearance: appearance)
         let controller = BonsplitController(configuration: configuration)
         let pane = controller.internalController.rootNode.allPanes.first!
@@ -857,7 +857,7 @@ final class BonsplitTests: XCTestCase {
         controller.delegate = spy
 
         let hostingView = NSHostingView(
-            rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: false)
+            rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: true)
                 .environment(controller)
                 .environment(controller.internalController)
         )
@@ -897,6 +897,58 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertEqual(spy.requestedKind, "terminal")
         XCTAssertEqual(spy.requestedPaneId, pane.id)
+    }
+
+    @MainActor
+    func testEmptyTrailingTabBarSpaceDoesNotRequestNewTerminalWhenButtonHidden() {
+        let appearance = BonsplitConfiguration.Appearance(splitButtons: [])
+        let configuration = BonsplitConfiguration(appearance: appearance)
+        let controller = BonsplitController(configuration: configuration)
+        let pane = controller.internalController.rootNode.allPanes.first!
+        let spy = NewTabRequestDelegateSpy()
+        controller.delegate = spy
+
+        let hostingView = NSHostingView(
+            rootView: TabBarView(pane: pane, isFocused: true, showSplitButtons: true)
+                .environment(controller)
+                .environment(controller.internalController)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 60),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        guard let contentView = window.contentView else {
+            XCTFail("Expected content view")
+            return
+        }
+
+        hostingView.frame = contentView.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        contentView.addSubview(hostingView)
+
+        window.makeKeyAndOrderFront(nil)
+        contentView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        contentView.layoutSubtreeIfNeeded()
+
+        let clickPoint = NSPoint(x: hostingView.bounds.maxX - 12, y: hostingView.bounds.midY)
+        let pointInWindow = hostingView.convert(clickPoint, to: nil)
+        guard let hitView = waitForDescendant(
+            ofType: TabBarDragZoneView.DragNSView.self,
+            in: contentView,
+            containingWindowPoint: pointInWindow,
+            where: { $0.onDoubleClick != nil }
+        ) else {
+            XCTFail("Expected trailing tab bar drag zone")
+            return
+        }
+        XCTAssertEqual(hitView.onDoubleClick?(), false)
+
+        XCTAssertNil(spy.requestedKind)
+        XCTAssertNil(spy.requestedPaneId)
     }
 
     func testIconSaturationKeepsRasterFaviconInColorWhenInactive() {

@@ -481,9 +481,7 @@ struct TabBarView: View {
                                 isFocusedPane: isFocused,
                                 onSingleClick: focusPaneFromTabBarChrome
                             ) {
-                                guard splitViewController.isInteractive else { return false }
-                                controller.requestNewTab(kind: "terminal", inPane: pane.id)
-                                return true
+                                performNewTerminalSplitButtonAction()
                             }
                             .frame(width: trailing + 30, height: TabBarMetrics.tabHeight)
                             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
@@ -559,12 +557,7 @@ struct TabBarView: View {
         .background(TabBarDragAndHoverView(
             isMinimalMode: isMinimalMode,
             onDoubleClick: {
-                guard splitViewController.isInteractive else { return false }
-                guard let button = visibleSplitButtons.first(where: { $0.action == .newTerminal }) else {
-                    return false
-                }
-                performSplitActionButton(button)
-                return true
+                performNewTerminalSplitButtonAction()
             },
             onHoverChanged: { isHoveringTabBar = $0 }
         ))
@@ -802,9 +795,7 @@ struct TabBarView: View {
             isFocusedPane: isFocused,
             onSingleClick: focusPaneFromTabBarChrome
         ) {
-            guard splitViewController.isInteractive else { return false }
-            controller.requestNewTab(kind: "terminal", inPane: pane.id)
-            return true
+            performNewTerminalSplitButtonAction()
         }
         .frame(width: 30, height: TabBarMetrics.tabHeight)
         .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
@@ -925,6 +916,15 @@ struct TabBarView: View {
         case .custom(let identifier):
             controller.requestCustomAction(identifier, inPane: pane.id)
         }
+    }
+
+    private func performNewTerminalSplitButtonAction() -> Bool {
+        guard splitViewController.isInteractive else { return false }
+        guard let button = visibleSplitButtons.first(where: { $0.action == .newTerminal }) else {
+            return false
+        }
+        performSplitActionButton(button)
+        return true
     }
 
 
