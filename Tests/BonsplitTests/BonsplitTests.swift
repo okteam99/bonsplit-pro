@@ -328,6 +328,15 @@ final class BonsplitTests: XCTestCase {
         XCTAssertTrue(TabBarStyling.imageDataShouldRenderAsTemplate(svg))
     }
 
+    @MainActor
+    func testSplitActionButtonImageDataIsCached() throws {
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="))
+        let first = try XCTUnwrap(TabBarStyling.splitActionButtonImage(from: png))
+        let second = try XCTUnwrap(TabBarStyling.splitActionButtonImage(from: png))
+
+        XCTAssertTrue(first === second)
+    }
+
     func testMinimalModeDoesNotReserveHiddenSplitButtonStrip() {
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: true),

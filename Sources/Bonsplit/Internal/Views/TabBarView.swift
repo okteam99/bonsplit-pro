@@ -189,6 +189,10 @@ enum TabBarStyling {
         return lowercased.contains("<svg") && lowercased.contains("currentcolor")
     }
 
+    static func splitActionButtonImage(from data: Data) -> NSImage? {
+        SplitActionButtonImageCache.shared.image(for: data)
+    }
+
     enum ScrollTarget: Equatable {
         case leading
         case selectedTab(UUID)
@@ -878,9 +882,7 @@ struct TabBarView: View {
     }
 
     private func splitActionButtonImage(from data: Data) -> NSImage? {
-        guard let image = NSImage(data: data) else { return nil }
-        image.isTemplate = TabBarStyling.imageDataShouldRenderAsTemplate(data)
-        return image
+        TabBarStyling.splitActionButtonImage(from: data)
     }
 
     private func splitActionButtonTooltip(
@@ -1060,6 +1062,40 @@ struct TabBarView: View {
                 }
                 .frame(height: 1)
             }
+    }
+}
+
+private final class SplitActionButtonImageCache {
+    static let shared = SplitActionButtonImageCache()
+
+    private var images: [Data: NSImage] = [:]
+    private var invalidImageData: Set<Data> = []
+    private let lock = NSLock()
+
+    func image(for data: Data) -> NSImage? {
+        lock.lock()
+        if let image = images[data] {
+            lock.unlock()
+            return image
+        }
+        if invalidImageData.contains(data) {
+            lock.unlock()
+            return nil
+        }
+        lock.unlock()
+
+        guard let image = NSImage(data: data) else {
+            lock.lock()
+            invalidImageData.insert(data)
+            lock.unlock()
+            return nil
+        }
+        image.isTemplate = TabBarStyling.imageDataShouldRenderAsTemplate(data)
+
+        lock.lock()
+        images[data] = image
+        lock.unlock()
+        return image
     }
 }
 
