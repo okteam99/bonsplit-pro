@@ -558,7 +558,10 @@ struct TabBarView: View {
             isMinimalMode: isMinimalMode,
             onDoubleClick: {
                 guard splitViewController.isInteractive else { return false }
-                controller.requestNewTab(kind: "terminal", inPane: pane.id)
+                guard let button = visibleSplitButtons.first(where: { $0.action == .newTerminal }) else {
+                    return false
+                }
+                performSplitActionButton(button)
                 return true
             },
             onHoverChanged: { isHoveringTabBar = $0 }
@@ -833,8 +836,10 @@ struct TabBarView: View {
     @ViewBuilder
     private var splitButtons: some View {
         let tooltips = controller.configuration.appearance.splitButtonTooltips
+        let buttons = visibleSplitButtons
         HStack(spacing: TabBarStyling.splitButtonsSpacing) {
-            ForEach(visibleSplitButtons, id: \.id) { button in
+            ForEach(buttons.indices, id: \.self) { index in
+                let button = buttons[index]
                 Button {
                     performSplitActionButton(button)
                 } label: {
@@ -904,6 +909,8 @@ struct TabBarView: View {
     }
 
     private func performSplitActionButton(_ button: BonsplitConfiguration.SplitActionButton) {
+        guard splitViewController.isInteractive else { return }
+
         switch button.action {
         case .newTerminal:
             controller.requestNewTab(kind: "terminal", inPane: pane.id)

@@ -237,6 +237,35 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(decoded, button)
     }
 
+    func testCustomSplitActionButtonPreservesReservedActionName() throws {
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "custom-terminal",
+            systemImage: "terminal",
+            tooltip: "Custom terminal action",
+            action: .custom("newTerminal")
+        )
+
+        let data = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded.action, .custom("newTerminal"))
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testSplitActionButtonDecodesLegacyBuiltInActionString() throws {
+        let data = #"""
+        {
+          "id": "terminal",
+          "icon": { "type": "systemImage", "name": "terminal" },
+          "action": "newTerminal"
+        }
+        """#.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded.action, .newTerminal)
+    }
+
     func testCustomSplitActionButtonSupportsEmojiIcon() throws {
         let button = BonsplitConfiguration.SplitActionButton(
             id: "agent",

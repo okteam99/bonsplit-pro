@@ -162,6 +162,11 @@ extension BonsplitConfiguration {
             case splitDown
             case custom(String)
 
+            private enum CodingKeys: String, CodingKey {
+                case type
+                case identifier
+            }
+
             public var rawValue: String {
                 switch self {
                 case .newTerminal:
@@ -178,25 +183,46 @@ extension BonsplitConfiguration {
             }
 
             public init(from decoder: Decoder) throws {
-                let container = try decoder.singleValueContainer()
-                let value = try container.decode(String.self)
-                switch value {
-                case "newTerminal":
-                    self = .newTerminal
-                case "newBrowser":
-                    self = .newBrowser
-                case "splitRight":
-                    self = .splitRight
-                case "splitDown":
-                    self = .splitDown
-                default:
-                    self = .custom(value)
+                if let container = try? decoder.singleValueContainer(),
+                   let value = try? container.decode(String.self) {
+                    self = Self.action(for: value)
+                    return
+                }
+
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                let type = try container.decode(String.self, forKey: .type)
+                if type == "custom" {
+                    self = .custom(try container.decode(String.self, forKey: .identifier))
+                } else {
+                    self = Self.action(for: type)
                 }
             }
 
             public func encode(to encoder: Encoder) throws {
-                var container = encoder.singleValueContainer()
-                try container.encode(rawValue)
+                switch self {
+                case .custom(let identifier):
+                    var container = encoder.container(keyedBy: CodingKeys.self)
+                    try container.encode("custom", forKey: .type)
+                    try container.encode(identifier, forKey: .identifier)
+                default:
+                    var container = encoder.singleValueContainer()
+                    try container.encode(rawValue)
+                }
+            }
+
+            private static func action(for value: String) -> Action {
+                switch value {
+                case "newTerminal":
+                    return .newTerminal
+                case "newBrowser":
+                    return .newBrowser
+                case "splitRight":
+                    return .splitRight
+                case "splitDown":
+                    return .splitDown
+                default:
+                    return .custom(value)
+                }
             }
         }
 
