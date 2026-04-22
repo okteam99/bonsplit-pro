@@ -102,6 +102,171 @@ public struct BonsplitConfiguration: Sendable {
 // MARK: - Appearance Configuration
 
 extension BonsplitConfiguration {
+    public struct SplitActionButton: Sendable, Codable, Hashable, Identifiable {
+        public enum Icon: Sendable, Codable, Hashable {
+            case systemImage(String)
+            case emoji(String)
+            case imageData(Data)
+
+            private enum CodingKeys: String, CodingKey {
+                case type
+                case name
+                case value
+                case data
+            }
+
+            public init(from decoder: Decoder) throws {
+                if let value = try? decoder.singleValueContainer().decode(String.self) {
+                    self = .systemImage(value)
+                    return
+                }
+
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                let type = try container.decode(String.self, forKey: .type)
+                switch type {
+                case "systemImage", "symbol", "sfSymbol":
+                    self = .systemImage(try container.decode(String.self, forKey: .name))
+                case "emoji":
+                    self = .emoji(try container.decode(String.self, forKey: .value))
+                case "imageData":
+                    self = .imageData(try container.decode(Data.self, forKey: .data))
+                default:
+                    throw DecodingError.dataCorruptedError(
+                        forKey: .type,
+                        in: container,
+                        debugDescription: "Unknown split action button icon type '\(type)'"
+                    )
+                }
+            }
+
+            public func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                switch self {
+                case .systemImage(let name):
+                    try container.encode("systemImage", forKey: .type)
+                    try container.encode(name, forKey: .name)
+                case .emoji(let value):
+                    try container.encode("emoji", forKey: .type)
+                    try container.encode(value, forKey: .value)
+                case .imageData(let data):
+                    try container.encode("imageData", forKey: .type)
+                    try container.encode(data, forKey: .data)
+                }
+            }
+        }
+
+        public enum Action: Sendable, Codable, Hashable {
+            case newTerminal
+            case newBrowser
+            case splitRight
+            case splitDown
+            case custom(String)
+
+            public var rawValue: String {
+                switch self {
+                case .newTerminal:
+                    return "newTerminal"
+                case .newBrowser:
+                    return "newBrowser"
+                case .splitRight:
+                    return "splitRight"
+                case .splitDown:
+                    return "splitDown"
+                case .custom(let identifier):
+                    return identifier
+                }
+            }
+
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                let value = try container.decode(String.self)
+                switch value {
+                case "newTerminal":
+                    self = .newTerminal
+                case "newBrowser":
+                    self = .newBrowser
+                case "splitRight":
+                    self = .splitRight
+                case "splitDown":
+                    self = .splitDown
+                default:
+                    self = .custom(value)
+                }
+            }
+
+            public func encode(to encoder: Encoder) throws {
+                var container = encoder.singleValueContainer()
+                try container.encode(rawValue)
+            }
+        }
+
+        public var id: String
+        public var icon: Icon
+        public var tooltip: String?
+        public var action: Action
+
+        public var systemImage: String {
+            if case .systemImage(let name) = icon {
+                return name
+            }
+            return "questionmark.circle"
+        }
+
+        public init(
+            id: String,
+            systemImage: String,
+            tooltip: String? = nil,
+            action: Action
+        ) {
+            self.init(
+                id: id,
+                icon: .systemImage(systemImage),
+                tooltip: tooltip,
+                action: action
+            )
+        }
+
+        public init(
+            id: String,
+            icon: Icon,
+            tooltip: String? = nil,
+            action: Action
+        ) {
+            self.id = id
+            self.icon = icon
+            self.tooltip = tooltip
+            self.action = action
+        }
+
+        public static let newTerminal = SplitActionButton(
+            id: "newTerminal",
+            systemImage: "terminal",
+            action: .newTerminal
+        )
+        public static let newBrowser = SplitActionButton(
+            id: "newBrowser",
+            systemImage: "globe",
+            action: .newBrowser
+        )
+        public static let splitRight = SplitActionButton(
+            id: "splitRight",
+            systemImage: "square.split.2x1",
+            action: .splitRight
+        )
+        public static let splitDown = SplitActionButton(
+            id: "splitDown",
+            systemImage: "square.split.1x2",
+            action: .splitDown
+        )
+
+        public static let defaults: [SplitActionButton] = [
+            .newTerminal,
+            .newBrowser,
+            .splitRight,
+            .splitDown
+        ]
+    }
+
     public struct SplitButtonTooltips: Sendable, Equatable {
         public var newTerminal: String
         public var newBrowser: String
@@ -172,6 +337,9 @@ extension BonsplitConfiguration {
         /// Whether to show split buttons in the tab bar
         public var showSplitButtons: Bool
 
+        /// Ordered action buttons shown in the tab bar when split buttons are enabled
+        public var splitButtons: [SplitActionButton]
+
         /// When true, split buttons are only visible on hover
         public var splitButtonsOnHover: Bool
 
@@ -224,6 +392,7 @@ extension BonsplitConfiguration {
             minimumPaneWidth: CGFloat = 100,
             minimumPaneHeight: CGFloat = 100,
             showSplitButtons: Bool = true,
+            splitButtons: [SplitActionButton] = SplitActionButton.defaults,
             splitButtonsOnHover: Bool = false,
             tabBarLeadingInset: CGFloat = 0,
             splitButtonTooltips: SplitButtonTooltips = .default,
@@ -239,6 +408,7 @@ extension BonsplitConfiguration {
             self.minimumPaneWidth = minimumPaneWidth
             self.minimumPaneHeight = minimumPaneHeight
             self.showSplitButtons = showSplitButtons
+            self.splitButtons = splitButtons
             self.splitButtonsOnHover = splitButtonsOnHover
             self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips

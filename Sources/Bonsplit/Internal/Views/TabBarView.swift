@@ -166,7 +166,22 @@ private final class TabBarScrollViewBridge: ObservableObject {
 }
 
 enum TabBarStyling {
-    static let splitButtonsBackdropWidth: CGFloat = 114
+    static let splitActionButtonReservedWidth: CGFloat = 22
+    static let splitButtonsSpacing: CGFloat = 4
+    static let splitButtonsLeadingPadding: CGFloat = 6
+    static let splitButtonsTrailingPadding: CGFloat = 8
+
+    static var splitButtonsBackdropWidth: CGFloat {
+        splitButtonsBackdropWidth(buttonCount: BonsplitConfiguration.SplitActionButton.defaults.count)
+    }
+
+    static func splitButtonsBackdropWidth(buttonCount: Int) -> CGFloat {
+        guard buttonCount > 0 else { return 0 }
+        return splitButtonsLeadingPadding
+            + splitButtonsTrailingPadding
+            + (CGFloat(buttonCount) * splitActionButtonReservedWidth)
+            + (CGFloat(max(0, buttonCount - 1)) * splitButtonsSpacing)
+    }
 
     enum ScrollTarget: Equatable {
         case leading
@@ -193,14 +208,15 @@ enum TabBarStyling {
 
     static func trailingTabContentInset(
         showSplitButtons: Bool,
-        isMinimalMode: Bool
+        isMinimalMode: Bool,
+        buttonCount: Int = BonsplitConfiguration.SplitActionButton.defaults.count
     ) -> CGFloat {
-        guard showSplitButtons else { return 0 }
+        guard showSplitButtons, buttonCount > 0 else { return 0 }
 
         // In minimal mode the split buttons fade in on hover as an overlay. Reserving that
         // width in the scroll content leaves a dead NSClipView strip when the buttons are
         // hidden, so clicks there never reach the tab-bar chrome.
-        return isMinimalMode ? 0 : splitButtonsBackdropWidth
+        return isMinimalMode ? 0 : splitButtonsBackdropWidth(buttonCount: buttonCount)
     }
 
     static func preferredScrollTarget(
@@ -311,6 +327,19 @@ struct TabBarView: View {
         controller.configuration.appearance
     }
 
+    private var visibleSplitButtons: [BonsplitConfiguration.SplitActionButton] {
+        guard showSplitButtons else { return [] }
+        return appearance.splitButtons
+    }
+
+    private var shouldRenderSplitButtons: Bool {
+        !visibleSplitButtons.isEmpty
+    }
+
+    private var splitButtonsBackdropWidth: CGFloat {
+        TabBarStyling.splitButtonsBackdropWidth(buttonCount: visibleSplitButtons.count)
+    }
+
     private var showsControlShortcutHints: Bool {
         isFocused && controlKeyMonitor.isShortcutHintVisible
     }
@@ -322,7 +351,8 @@ struct TabBarView: View {
     private var trailingTabContentInset: CGFloat {
         TabBarStyling.trailingTabContentInset(
             showSplitButtons: showSplitButtons,
-            isMinimalMode: isMinimalMode
+            isMinimalMode: isMinimalMode,
+            buttonCount: visibleSplitButtons.count
         )
     }
 
@@ -476,7 +506,7 @@ struct TabBarView: View {
                 // tab clicks fall through to `TabBarDragAndHoverView` (which performs a
                 // window drag in minimal mode).
                 .overlay(alignment: .trailing) {
-                    if showSplitButtons {
+                    if shouldRenderSplitButtons {
                         let shouldShow = !isMinimalMode || isHoveringTabBar
                         let backdropColor = Color(nsColor: Self.buttonBackdropColor(
                             for: appearance,
@@ -493,7 +523,7 @@ struct TabBarView: View {
                                 .frame(width: 24)
                                 Rectangle().fill(backdropColor)
                             }
-                            .frame(width: TabBarStyling.splitButtonsBackdropWidth)
+                            .frame(width: splitButtonsBackdropWidth)
 
                             splitButtons
                                 .saturation(tabBarSaturation)
@@ -506,11 +536,17 @@ struct TabBarView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: TabBarMetrics.barHeight)
         .coordinateSpace(name: "tabBar")
         .background(tabBarBackground)
         .background(TabBarDragAndHoverView(
             isMinimalMode: isMinimalMode,
+            onDoubleClick: {
+                guard splitViewController.isInteractive else { return false }
+                controller.requestNewTab(kind: "terminal", inPane: pane.id)
+                return true
+            },
             onHoverChanged: { isHoveringTabBar = $0 }
         ))
         .background(
@@ -783,47 +819,84 @@ struct TabBarView: View {
     @ViewBuilder
     private var splitButtons: some View {
         let tooltips = controller.configuration.appearance.splitButtonTooltips
-        HStack(spacing: 4) {
-            Button {
-                controller.requestNewTab(kind: "terminal", inPane: pane.id)
-            } label: {
-                Image(systemName: "terminal")
-                    .font(.system(size: 12))
+        HStack(spacing: TabBarStyling.splitButtonsSpacing) {
+            ForEach(visibleSplitButtons, id: \.id) { button in
+                Button {
+                    performSplitActionButton(button)
+                } label: {
+                    splitActionButtonIcon(button.icon)
+                }
+                .buttonStyle(SplitActionButtonStyle(appearance: appearance))
+                .safeHelp(splitActionButtonTooltip(button, tooltips: tooltips))
             }
-            .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .safeHelp(tooltips.newTerminal)
-
-            Button {
-                controller.requestNewTab(kind: "browser", inPane: pane.id)
-            } label: {
-                Image(systemName: "globe")
-                    .font(.system(size: 12))
-            }
-            .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .safeHelp(tooltips.newBrowser)
-
-            Button {
-                // 120fps animation handled by SplitAnimator
-                controller.splitPane(pane.id, orientation: .horizontal)
-            } label: {
-                Image(systemName: "square.split.2x1")
-                    .font(.system(size: 12))
-            }
-            .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .safeHelp(tooltips.splitRight)
-
-            Button {
-                // 120fps animation handled by SplitAnimator
-                controller.splitPane(pane.id, orientation: .vertical)
-            } label: {
-                Image(systemName: "square.split.1x2")
-                    .font(.system(size: 12))
-            }
-            .buttonStyle(SplitActionButtonStyle(appearance: appearance))
-            .safeHelp(tooltips.splitDown)
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 8)
+        .padding(.leading, TabBarStyling.splitButtonsLeadingPadding)
+        .padding(.trailing, TabBarStyling.splitButtonsTrailingPadding)
+    }
+
+    @ViewBuilder
+    private func splitActionButtonIcon(_ icon: BonsplitConfiguration.SplitActionButton.Icon) -> some View {
+        switch icon {
+        case .systemImage(let name):
+            Image(systemName: name)
+                .font(.system(size: 12))
+        case .emoji(let value):
+            Text(value)
+                .font(.system(size: 13))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        case .imageData(let data):
+            if let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 12))
+            }
+        }
+    }
+
+    private func splitActionButtonTooltip(
+        _ button: BonsplitConfiguration.SplitActionButton,
+        tooltips: BonsplitConfiguration.SplitButtonTooltips
+    ) -> String {
+        if let tooltip = button.tooltip?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !tooltip.isEmpty {
+            return tooltip
+        }
+
+        switch button.action {
+        case .newTerminal:
+            return tooltips.newTerminal
+        case .newBrowser:
+            return tooltips.newBrowser
+        case .splitRight:
+            return tooltips.splitRight
+        case .splitDown:
+            return tooltips.splitDown
+        case .custom(let identifier):
+            return identifier
+        }
+    }
+
+    private func performSplitActionButton(_ button: BonsplitConfiguration.SplitActionButton) {
+        switch button.action {
+        case .newTerminal:
+            controller.requestNewTab(kind: "terminal", inPane: pane.id)
+        case .newBrowser:
+            controller.requestNewTab(kind: "browser", inPane: pane.id)
+        case .splitRight:
+            // 120fps animation handled by SplitAnimator
+            controller.splitPane(pane.id, orientation: .horizontal)
+        case .splitDown:
+            // 120fps animation handled by SplitAnimator
+            controller.splitPane(pane.id, orientation: .vertical)
+        case .custom(let identifier):
+            controller.requestCustomAction(identifier, inPane: pane.id)
+        }
     }
 
 
@@ -979,22 +1052,26 @@ private struct SplitActionButtonStyle: ButtonStyle {
 /// this view only receives hits in truly empty space.
 private struct TabBarDragAndHoverView: NSViewRepresentable {
     let isMinimalMode: Bool
+    let onDoubleClick: () -> Bool
     let onHoverChanged: (Bool) -> Void
 
     func makeNSView(context: Context) -> TabBarBackgroundNSView {
         let view = TabBarBackgroundNSView()
         view.isMinimalMode = isMinimalMode
+        view.onDoubleClick = onDoubleClick
         view.onHoverChanged = onHoverChanged
         return view
     }
 
     func updateNSView(_ nsView: TabBarBackgroundNSView, context: Context) {
         nsView.isMinimalMode = isMinimalMode
+        nsView.onDoubleClick = onDoubleClick
         nsView.onHoverChanged = onHoverChanged
     }
 
     final class TabBarBackgroundNSView: NSView {
         var isMinimalMode = false
+        var onDoubleClick: (() -> Bool)?
         var onHoverChanged: ((Bool) -> Void)?
         private var hoverTrackingArea: NSTrackingArea?
 
@@ -1045,16 +1122,25 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
 #if DEBUG
             dlog("tab.bar.bg.mouseDown isMinimal=\(isMinimalMode ? 1 : 0) clickCount=\(event.clickCount)")
 #endif
-            guard isMinimalMode, let window else {
+            guard let window else {
                 super.mouseDown(with: event)
                 return
             }
             if event.clickCount >= 2 {
-                let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
-                switch action {
-                case "Minimize": window.miniaturize(nil)
-                default: window.zoom(nil)
+                if isMinimalMode {
+                    let action = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleActionOnDoubleClick"] as? String
+                    switch action {
+                    case "Minimize": window.miniaturize(nil)
+                    default: window.zoom(nil)
+                    }
+                    return
                 }
+                if onDoubleClick?() == true {
+                    return
+                }
+            }
+            guard isMinimalMode else {
+                super.mouseDown(with: event)
                 return
             }
             let wasMovable = window.isMovable

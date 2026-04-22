@@ -98,6 +98,16 @@ final class BonsplitTests: XCTestCase {
         }
     }
 
+    private final class CustomActionDelegateSpy: BonsplitDelegate {
+        var requestedIdentifier: String?
+        var requestedPaneId: PaneID?
+
+        func splitTabBar(_ controller: BonsplitController, didRequestCustomAction identifier: String, inPane pane: PaneID) {
+            requestedIdentifier = identifier
+            requestedPaneId = pane
+        }
+    }
+
     @MainActor
     func testControllerCreation() {
         let controller = BonsplitController()
@@ -206,6 +216,56 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(defaults.splitDown, "Split Down")
     }
 
+    func testDefaultSplitActionButtons() {
+        XCTAssertEqual(
+            BonsplitConfiguration.SplitActionButton.defaults,
+            [.newTerminal, .newBrowser, .splitRight, .splitDown]
+        )
+    }
+
+    func testCustomSplitActionButtonRoundTrips() throws {
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "run-tests",
+            systemImage: "checkmark.circle",
+            tooltip: "Run tests",
+            action: .custom("run-tests")
+        )
+
+        let data = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testCustomSplitActionButtonSupportsEmojiIcon() throws {
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "agent",
+            icon: .emoji("🤖"),
+            tooltip: "Start agent",
+            action: .custom("agent")
+        )
+
+        let data = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: data)
+
+        XCTAssertEqual(decoded, button)
+    }
+
+    func testCustomSplitActionButtonSupportsImageDataIcon() throws {
+        let data = Data([0x89, 0x50, 0x4E, 0x47])
+        let button = BonsplitConfiguration.SplitActionButton(
+            id: "image-agent",
+            icon: .imageData(data),
+            tooltip: "Start image agent",
+            action: .custom("image-agent")
+        )
+
+        let encoded = try JSONEncoder().encode(button)
+        let decoded = try JSONDecoder().decode(BonsplitConfiguration.SplitActionButton.self, from: encoded)
+
+        XCTAssertEqual(decoded, button)
+    }
+
     func testMinimalModeDoesNotReserveHiddenSplitButtonStrip() {
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: true),
@@ -214,8 +274,18 @@ final class BonsplitTests: XCTestCase {
         )
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: false),
-            TabBarStyling.splitButtonsBackdropWidth,
+            TabBarStyling.splitButtonsBackdropWidth(buttonCount: 4),
             "Standard mode should keep reserving space for the always-visible split buttons"
+        )
+        XCTAssertEqual(
+            TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: false, buttonCount: 2),
+            TabBarStyling.splitButtonsBackdropWidth(buttonCount: 2),
+            "Standard mode should reserve space for the configured split buttons only"
+        )
+        XCTAssertEqual(
+            TabBarStyling.trailingTabContentInset(showSplitButtons: true, isMinimalMode: false, buttonCount: 0),
+            0,
+            "No strip should be reserved when the configured split button list is empty"
         )
         XCTAssertEqual(
             TabBarStyling.trailingTabContentInset(showSplitButtons: false, isMinimalMode: false),
@@ -365,6 +435,40 @@ final class BonsplitTests: XCTestCase {
         let controller = BonsplitController(configuration: config)
 
         XCTAssertEqual(controller.configuration.appearance.splitButtonTooltips, customTooltips)
+    }
+
+    @MainActor
+    func testConfigurationAcceptsCustomSplitActionButtons() {
+        let buttons: [BonsplitConfiguration.SplitActionButton] = [
+            .newTerminal,
+            .init(
+                id: "run-tests",
+                systemImage: "checkmark.circle",
+                tooltip: "Run tests",
+                action: .custom("run-tests")
+            ),
+        ]
+        let config = BonsplitConfiguration(
+            appearance: .init(
+                splitButtons: buttons
+            )
+        )
+        let controller = BonsplitController(configuration: config)
+
+        XCTAssertEqual(controller.configuration.appearance.splitButtons, buttons)
+    }
+
+    @MainActor
+    func testControllerRequestsCustomAction() {
+        let controller = BonsplitController()
+        let delegate = CustomActionDelegateSpy()
+        controller.delegate = delegate
+        let paneId = controller.focusedPaneId!
+
+        controller.requestCustomAction("run-tests", inPane: paneId)
+
+        XCTAssertEqual(delegate.requestedIdentifier, "run-tests")
+        XCTAssertEqual(delegate.requestedPaneId, paneId)
     }
 
     func testChromeBackgroundHexOverrideParsesForPaneBackground() {
@@ -708,11 +812,17 @@ final class BonsplitTests: XCTestCase {
         contentView.layoutSubtreeIfNeeded()
 
         let clickPoint = NSPoint(x: hostingView.bounds.maxX - 12, y: hostingView.bounds.midY)
-        guard let event = try? makeLeftMouseDownEvent(in: hostingView, at: clickPoint, clickCount: 2) else {
-            XCTFail("Expected mouse event")
+        let pointInWindow = hostingView.convert(clickPoint, to: nil)
+        guard let hitView = waitForDescendant(
+            ofType: TabBarDragZoneView.DragNSView.self,
+            in: contentView,
+            containingWindowPoint: pointInWindow,
+            where: { $0.onDoubleClick != nil }
+        ) else {
+            XCTFail("Expected trailing tab bar drag zone")
             return
         }
-        NSApp.sendEvent(event)
+        XCTAssertEqual(hitView.onDoubleClick?(), true)
 
         XCTAssertEqual(spy.requestedKind, "terminal")
         XCTAssertEqual(spy.requestedPaneId, pane.id)
@@ -1239,6 +1349,61 @@ final class BonsplitTests: XCTestCase {
         }
         for subview in root.subviews {
             if let match = firstDescendant(ofType: type, in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    @MainActor
+    private func waitForDescendant<T: NSView>(
+        ofType type: T.Type,
+        in root: NSView,
+        containingWindowPoint point: NSPoint,
+        timeout: TimeInterval = 1.0,
+        where predicate: (T) -> Bool = { _ in true }
+    ) -> T? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            root.layoutSubtreeIfNeeded()
+            if let match = firstDescendant(
+                ofType: type,
+                in: root,
+                containingWindowPoint: point,
+                where: predicate
+            ) {
+                return match
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        } while Date() < deadline
+        return firstDescendant(
+            ofType: type,
+            in: root,
+            containingWindowPoint: point,
+            where: predicate
+        )
+    }
+
+    @MainActor
+    private func firstDescendant<T: NSView>(
+        ofType type: T.Type,
+        in root: NSView,
+        containingWindowPoint point: NSPoint,
+        where predicate: (T) -> Bool = { _ in true }
+    ) -> T? {
+        if let match = root as? T {
+            let frameInWindow = root.convert(root.bounds, to: nil)
+            if frameInWindow.contains(point), predicate(match) {
+                return match
+            }
+        }
+        for subview in root.subviews {
+            if let match = firstDescendant(
+                ofType: type,
+                in: subview,
+                containingWindowPoint: point,
+                where: predicate
+            ) {
                 return match
             }
         }
