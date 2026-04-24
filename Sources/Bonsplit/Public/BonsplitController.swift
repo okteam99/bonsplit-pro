@@ -23,6 +23,16 @@ public final class BonsplitController {
         }
     }
 
+    public struct ExternalFileDropRequest {
+        public let urls: [URL]
+        public let destination: ExternalTabDropRequest.Destination
+
+        public init(urls: [URL], destination: ExternalTabDropRequest.Destination) {
+            self.urls = urls
+            self.destination = destination
+        }
+    }
+
     // MARK: - Delegate
 
     /// Delegate for receiving callbacks about tab bar events
@@ -50,6 +60,10 @@ public final class BonsplitController {
     /// Handler for tab drops originating from another Bonsplit controller (e.g. another workspace/window).
     /// Return `true` when the drop has been handled by the host application.
     @ObservationIgnored public var onExternalTabDrop: ((ExternalTabDropRequest) -> Bool)?
+
+    /// Handler for file drops from external apps, routed through pane drop zones.
+    /// Return `true` when the drop has been handled by the host application.
+    @ObservationIgnored public var onExternalFileDrop: ((ExternalFileDropRequest) -> Bool)?
 
     /// Called when the user explicitly requests to close a tab from the tab strip UI.
     /// Internal host-driven closes should not use this hook.
