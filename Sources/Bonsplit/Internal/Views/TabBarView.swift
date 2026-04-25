@@ -1802,7 +1802,7 @@ private final class TabControlShortcutKeyMonitor: ObservableObject {
             ) else { return }
             guard let currentModifier = TabControlShortcutHintPolicy.hintModifier(for: NSEvent.modifierFlags) else { return }
             self.shortcutModifierSymbol = currentModifier.symbol
-            withAnimation(.easeInOut(duration: 0.14)) {
+            withAnimation(TabControlShortcutHintAnimation.visibility) {
                 self.isShortcutHintVisible = true
             }
         }
@@ -1817,7 +1817,7 @@ private final class TabControlShortcutKeyMonitor: ObservableObject {
         pendingShowWorkItem = nil
         pendingModifier = nil
         if resetVisible {
-            withAnimation(.easeInOut(duration: 0.14)) {
+            withAnimation(TabControlShortcutHintAnimation.visibility) {
                 isShortcutHintVisible = false
             }
         }
