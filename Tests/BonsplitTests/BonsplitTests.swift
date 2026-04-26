@@ -635,7 +635,7 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(Int(round(green * 255)), 34)
         XCTAssertEqual(Int(round(blue * 255)), 51)
         XCTAssertEqual(Int(round(alpha * 255)), 128)
-        XCTAssertFalse(TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance))
+        XCTAssertTrue(TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance))
     }
 
     func testSplitButtonBackdropPaintsForOpaqueChromeBackground() {
