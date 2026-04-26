@@ -346,6 +346,10 @@ struct TabBarView: View {
         !visibleSplitButtons.isEmpty
     }
 
+    private var shouldShowSplitButtons: Bool {
+        shouldRenderSplitButtons && (!isMinimalMode || isHoveringTabBar)
+    }
+
     private var splitButtonsBackdropWidth: CGFloat {
         TabBarStyling.splitButtonsBackdropWidth(buttonCount: visibleSplitButtons.count)
     }
@@ -521,7 +525,6 @@ struct TabBarView: View {
                 // window drag in minimal mode).
                 .overlay(alignment: .trailing) {
                     if shouldRenderSplitButtons {
-                        let shouldShow = !isMinimalMode || isHoveringTabBar
                         let backdropColor = Color(nsColor: Self.buttonBackdropColor(
                             for: appearance,
                             focused: isFocused,
@@ -541,11 +544,11 @@ struct TabBarView: View {
 
                             splitButtons
                                 .saturation(tabBarSaturation)
+                                .padding(.bottom, 1)
                         }
-                        .padding(.bottom, 1)
-                        .opacity(shouldShow ? 1 : 0)
-                        .allowsHitTesting(shouldShow)
-                        .animation(.easeInOut(duration: 0.14), value: shouldShow)
+                        .opacity(shouldShowSplitButtons ? 1 : 0)
+                        .allowsHitTesting(shouldShowSplitButtons)
+                        .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
                     }
                 }
             }
@@ -966,30 +969,11 @@ struct TabBarView: View {
             let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
             let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
             return NSColor(red: r, green: g, blue: b, alpha: 1.0)
-        default: // 0: pre-composited paneBackground over windowBg
-            return precompositedPaneBackground(for: appearance, focused: focused)
+        default: // 0: tab bar chrome, preserving translucency
+            let backdrop = TabBarColors.nsColorSplitButtonBackdrop(for: appearance)
+            let alpha = focused ? backdrop.alphaComponent : backdrop.alphaComponent * 0.95
+            return backdrop.withAlphaComponent(alpha)
         }
-    }
-
-    /// Pre-composite the pane background over the window background to produce
-    /// a flat opaque color that matches what .background(barFill) looks like
-    /// after compositing. Avoids double-compositing mismatch on overlays.
-    private static func precompositedPaneBackground(
-        for appearance: BonsplitConfiguration.Appearance,
-        focused: Bool
-    ) -> NSColor {
-        let chrome = TabBarColors.nsColorPaneBackground(for: appearance)
-        let winBg = NSColor.windowBackgroundColor
-        guard let fg = chrome.usingColorSpace(.sRGB),
-              let bk = winBg.usingColorSpace(.sRGB) else {
-            return chrome.withAlphaComponent(1.0)
-        }
-        let a: CGFloat = focused ? fg.alphaComponent : fg.alphaComponent * 0.95
-        let oneMinusA = 1.0 - a
-        let r = fg.redComponent * a + bk.redComponent * oneMinusA
-        let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
-        let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
-        return NSColor(red: r, green: g, blue: b, alpha: 1.0)
     }
 
     // MARK: - Combined Mask (scroll fades + button area)
@@ -1047,8 +1031,15 @@ struct TabBarView: View {
             ? TabBarColors.barBackground(for: appearance)
             : TabBarColors.barBackground(for: appearance).opacity(0.95)
 
-        Rectangle()
-            .fill(barFill)
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(barFill)
+                .frame(maxWidth: .infinity)
+            if shouldShowSplitButtons {
+                Color.clear
+                    .frame(width: splitButtonsBackdropWidth)
+            }
+        }
             .overlay(alignment: .bottom) {
                 GeometryReader { geometry in
                     let separator = TabBarColors.separator(for: appearance)
