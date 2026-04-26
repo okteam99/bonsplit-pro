@@ -17,6 +17,15 @@ enum TabBarColors {
         return NSColor(bonsplitHex: value)
     }
 
+    private static func paneBackgroundColor(
+        for appearance: BonsplitConfiguration.Appearance
+    ) -> NSColor? {
+        guard let value = appearance.chromeColors.paneBackgroundHex else {
+            return chromeBackgroundColor(for: appearance)
+        }
+        return NSColor(bonsplitHex: value)
+    }
+
     private static func chromeBorderColor(
         for appearance: BonsplitConfiguration.Appearance
     ) -> NSColor? {
@@ -49,11 +58,11 @@ enum TabBarColors {
     }
 
     static func paneBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
-        Color(nsColor: effectiveBackgroundColor(for: appearance, fallback: .textBackgroundColor))
+        Color(nsColor: paneBackgroundColor(for: appearance) ?? .textBackgroundColor)
     }
 
     static func nsColorPaneBackground(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
-        effectiveBackgroundColor(for: appearance, fallback: .textBackgroundColor)
+        paneBackgroundColor(for: appearance) ?? .textBackgroundColor
     }
 
     // MARK: - Tab Bar Background

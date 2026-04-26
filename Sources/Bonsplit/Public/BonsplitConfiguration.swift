@@ -336,9 +336,13 @@ extension BonsplitConfiguration {
 
     public struct Appearance: Sendable {
         public struct ChromeColors: Sendable {
-            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for tab/pane chrome backgrounds.
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for tab chrome backgrounds.
             /// When unset, Bonsplit uses native system colors.
             public var backgroundHex: String?
+
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the split pane background.
+            /// When unset, Bonsplit falls back to `backgroundHex`.
+            public var paneBackgroundHex: String?
 
             /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for separators/dividers.
             /// When unset, Bonsplit derives separators from the chrome background.
@@ -346,9 +350,11 @@ extension BonsplitConfiguration {
 
             public init(
                 backgroundHex: String? = nil,
+                paneBackgroundHex: String? = nil,
                 borderHex: String? = nil
             ) {
                 self.backgroundHex = backgroundHex
+                self.paneBackgroundHex = paneBackgroundHex
                 self.borderHex = borderHex
             }
         }

@@ -584,6 +584,38 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(Int(round(alpha * 255)), 255)
     }
 
+    func testPaneBackgroundHexOverrideCanDifferFromChromeBackground() {
+        let appearance = BonsplitConfiguration.Appearance(
+            chromeColors: .init(
+                backgroundHex: "#FDF6E3",
+                paneBackgroundHex: "#11223380"
+            )
+        )
+        let paneColor = TabBarColors.nsColorPaneBackground(for: appearance).usingColorSpace(.sRGB)!
+        let barColor = NSColor(TabBarColors.barBackground(for: appearance)).usingColorSpace(.sRGB)!
+
+        var paneRed: CGFloat = 0
+        var paneGreen: CGFloat = 0
+        var paneBlue: CGFloat = 0
+        var paneAlpha: CGFloat = 0
+        paneColor.getRed(&paneRed, green: &paneGreen, blue: &paneBlue, alpha: &paneAlpha)
+
+        var barRed: CGFloat = 0
+        var barGreen: CGFloat = 0
+        var barBlue: CGFloat = 0
+        var barAlpha: CGFloat = 0
+        barColor.getRed(&barRed, green: &barGreen, blue: &barBlue, alpha: &barAlpha)
+
+        XCTAssertEqual(Int(round(paneRed * 255)), 17)
+        XCTAssertEqual(Int(round(paneGreen * 255)), 34)
+        XCTAssertEqual(Int(round(paneBlue * 255)), 51)
+        XCTAssertEqual(Int(round(paneAlpha * 255)), 128)
+        XCTAssertEqual(Int(round(barRed * 255)), 253)
+        XCTAssertEqual(Int(round(barGreen * 255)), 246)
+        XCTAssertEqual(Int(round(barBlue * 255)), 227)
+        XCTAssertEqual(Int(round(barAlpha * 255)), 255)
+    }
+
     func testChromeBorderHexOverrideParsesForSeparatorColor() {
         let appearance = BonsplitConfiguration.Appearance(
             chromeColors: .init(backgroundHex: "#272822", borderHex: "#112233")
