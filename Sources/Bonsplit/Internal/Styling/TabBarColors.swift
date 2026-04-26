@@ -79,6 +79,10 @@ enum TabBarColors {
         effectiveBackgroundColor(for: appearance, fallback: .windowBackgroundColor)
     }
 
+    static func shouldPaintSplitButtonBackdrop(for appearance: BonsplitConfiguration.Appearance) -> Bool {
+        nsColorSplitButtonBackdrop(for: appearance).alphaComponent >= 0.999
+    }
+
     static var barMaterial: Material {
         .bar
     }

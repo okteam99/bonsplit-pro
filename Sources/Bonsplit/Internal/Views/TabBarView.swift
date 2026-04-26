@@ -350,6 +350,10 @@ struct TabBarView: View {
         shouldRenderSplitButtons && (!isMinimalMode || isHoveringTabBar)
     }
 
+    private var shouldPaintSplitButtonBackdrop: Bool {
+        shouldShowSplitButtons && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
+    }
+
     private var splitButtonsBackdropWidth: CGFloat {
         TabBarStyling.splitButtonsBackdropWidth(buttonCount: visibleSplitButtons.count)
     }
@@ -531,16 +535,18 @@ struct TabBarView: View {
                             style: fadeColorStyle
                         ))
                         ZStack(alignment: .trailing) {
-                            HStack(spacing: 0) {
-                                LinearGradient(
-                                    colors: [backdropColor.opacity(0), backdropColor],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                                .frame(width: 24)
-                                Rectangle().fill(backdropColor)
+                            if shouldPaintSplitButtonBackdrop {
+                                HStack(spacing: 0) {
+                                    LinearGradient(
+                                        colors: [backdropColor.opacity(0), backdropColor],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    .frame(width: 24)
+                                    Rectangle().fill(backdropColor)
+                                }
+                                .frame(width: splitButtonsBackdropWidth)
                             }
-                            .frame(width: splitButtonsBackdropWidth)
 
                             splitButtons
                                 .saturation(tabBarSaturation)
@@ -1035,7 +1041,7 @@ struct TabBarView: View {
             Rectangle()
                 .fill(barFill)
                 .frame(maxWidth: .infinity)
-            if shouldShowSplitButtons {
+            if shouldPaintSplitButtonBackdrop {
                 Color.clear
                     .frame(width: splitButtonsBackdropWidth)
             }
