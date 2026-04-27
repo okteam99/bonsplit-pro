@@ -417,7 +417,7 @@ struct TabItemView: View {
         Divider()
 
         localizedContextButton(
-            "command.copyWorkspaceAndSurfaceIDs.title",
+            "command.copyIdentifiers.title",
             defaultValue: "Copy IDs",
             action: .copyIdentifiers
         )
