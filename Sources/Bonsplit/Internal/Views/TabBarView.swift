@@ -1145,7 +1145,6 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         nsView.isMinimalMode = isMinimalMode
         nsView.onDoubleClick = onDoubleClick
         nsView.onHoverChanged = onHoverChanged
-        nsView.syncHoverStateToCurrentMouseLocation()
     }
 
     final class TabBarBackgroundNSView: NSView {
@@ -1155,10 +1154,13 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         private var hoverTrackingArea: NSTrackingArea?
         private var windowDidBecomeKeyObserver: NSObjectProtocol?
         private var windowDidResignKeyObserver: NSObjectProtocol?
+        private var localMouseMonitor: Any?
+        private var isHovering = false
 
         override var mouseDownCanMoveWindow: Bool { false }
 
         deinit {
+            removeLocalMouseMonitor()
             removeWindowObservers()
             BonsplitTabBarHitRegionRegistry.unregister(self)
         }
@@ -1170,9 +1172,11 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             if window != nil {
                 BonsplitTabBarHitRegionRegistry.register(self)
                 installWindowObservers()
+                installLocalMouseMonitorIfNeeded()
                 syncHoverStateToCurrentMouseLocation()
             } else {
-                onHoverChanged?(false)
+                removeLocalMouseMonitor()
+                emitHoverChanged(false)
             }
         }
 
@@ -1190,20 +1194,23 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             }
             let area = NSTrackingArea(
                 rect: bounds,
-                options: [.mouseEnteredAndExited, .activeInActiveApp],
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
                 owner: self
             )
             addTrackingArea(area)
             hoverTrackingArea = area
-            syncHoverStateToCurrentMouseLocation()
         }
 
         override func mouseEntered(with event: NSEvent) {
-            onHoverChanged?(true)
+            emitHoverChanged(true)
         }
 
         override func mouseExited(with event: NSEvent) {
-            onHoverChanged?(false)
+            emitHoverChanged(false)
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            updateHover(from: event)
         }
 
         override func mouseDown(with event: NSEvent) {
@@ -1239,11 +1246,43 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
 
         func syncHoverStateToCurrentMouseLocation() {
             guard let window else {
-                onHoverChanged?(false)
+                emitHoverChanged(false)
                 return
             }
             let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            onHoverChanged?(bounds.contains(point))
+            emitHoverChanged(bounds.contains(point))
+        }
+
+        private func installLocalMouseMonitorIfNeeded() {
+            guard localMouseMonitor == nil else { return }
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.mouseMoved, .leftMouseDown, .leftMouseDragged]
+            ) { [weak self] event in
+                self?.updateHover(from: event)
+                return event
+            }
+        }
+
+        private func removeLocalMouseMonitor() {
+            if let localMouseMonitor {
+                NSEvent.removeMonitor(localMouseMonitor)
+                self.localMouseMonitor = nil
+            }
+        }
+
+        private func updateHover(from event: NSEvent) {
+            guard let window, event.window === window else {
+                emitHoverChanged(false)
+                return
+            }
+            let point = convert(event.locationInWindow, from: nil)
+            emitHoverChanged(bounds.contains(point))
+        }
+
+        private func emitHoverChanged(_ newValue: Bool) {
+            guard isHovering != newValue else { return }
+            isHovering = newValue
+            onHoverChanged?(newValue)
         }
 
         private func installWindowObservers() {
