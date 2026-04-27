@@ -358,10 +358,10 @@ extension BonsplitConfiguration {
 
             public init(
                 style: SplitButtonBackdropStyle = .translucentChrome,
-                fadeWidth: CGFloat = 96,
+                fadeWidth: CGFloat = 112,
                 contentFadeWidth: CGFloat = 42,
-                solidWidth: CGFloat = 18,
-                fadeRampStartFraction: CGFloat = 0.82,
+                solidWidth: CGFloat = 6,
+                fadeRampStartFraction: CGFloat = 0.72,
                 leadingOpacity: CGFloat = 0,
                 trailingOpacity: CGFloat = 1.0,
                 masksTabContent: Bool = true
