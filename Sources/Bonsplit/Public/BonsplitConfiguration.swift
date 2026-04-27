@@ -346,6 +346,33 @@ extension BonsplitConfiguration {
             case hidden = 7
         }
 
+        public struct SplitButtonBackdropEffect: Sendable {
+            public var style: SplitButtonBackdropStyle
+            public var fadeWidth: CGFloat
+            public var contentFadeWidth: CGFloat
+            public var leadingOpacity: CGFloat
+            public var trailingOpacity: CGFloat
+            public var masksTabContent: Bool
+
+            public init(
+                style: SplitButtonBackdropStyle = .translucentChrome,
+                fadeWidth: CGFloat = 24,
+                contentFadeWidth: CGFloat = 24,
+                leadingOpacity: CGFloat = 0,
+                trailingOpacity: CGFloat = 1.0,
+                masksTabContent: Bool = true
+            ) {
+                self.style = style
+                self.fadeWidth = max(0, fadeWidth)
+                self.contentFadeWidth = max(0, contentFadeWidth)
+                self.leadingOpacity = min(max(0, leadingOpacity), 1)
+                self.trailingOpacity = min(max(0, trailingOpacity), 1)
+                self.masksTabContent = masksTabContent
+            }
+
+            public static let `default` = SplitButtonBackdropEffect()
+        }
+
         public struct ChromeColors: Sendable {
             /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for tab chrome backgrounds.
             /// When unset, Bonsplit uses native system colors.
@@ -415,6 +442,11 @@ extension BonsplitConfiguration {
         /// When unset, Bonsplit uses the host app's debug override if one is configured.
         public var splitButtonBackdropStyle: SplitButtonBackdropStyle?
 
+        /// Optional explicit backdrop effect for the tab bar's right-side action buttons.
+        /// This controls both the color strategy and how tab content is faded or clipped
+        /// underneath the action-button region.
+        public var splitButtonBackdropEffect: SplitButtonBackdropEffect?
+
         /// Extra leading inset for the tab bar (e.g. for traffic light buttons when sidebar is collapsed)
         public var tabBarLeadingInset: CGFloat
 
@@ -467,6 +499,7 @@ extension BonsplitConfiguration {
             splitButtons: [SplitActionButton] = SplitActionButton.defaults,
             splitButtonsOnHover: Bool = false,
             splitButtonBackdropStyle: SplitButtonBackdropStyle? = nil,
+            splitButtonBackdropEffect: SplitButtonBackdropEffect? = nil,
             tabBarLeadingInset: CGFloat = 0,
             splitButtonTooltips: SplitButtonTooltips = .default,
             animationDuration: Double = 0.15,
@@ -484,6 +517,7 @@ extension BonsplitConfiguration {
             self.splitButtons = Self.uniqueSplitButtons(splitButtons)
             self.splitButtonsOnHover = splitButtonsOnHover
             self.splitButtonBackdropStyle = splitButtonBackdropStyle
+            self.splitButtonBackdropEffect = splitButtonBackdropEffect
             self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips
             self.animationDuration = animationDuration

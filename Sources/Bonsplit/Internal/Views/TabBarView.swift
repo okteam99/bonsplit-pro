@@ -302,7 +302,7 @@ struct TabBarView: View {
     var showSplitButtons: Bool = true
 
     @AppStorage("workspacePresentationMode") private var presentationMode = "standard"
-    @AppStorage("debugFadeColorStyle") private var fadeColorStyle = 0
+    @AppStorage("debugFadeColorStyle") private var fadeColorStyle = -1
     @State private var isHoveringTabBar = false
     @State private var dropTargetIndex: Int?
     @State private var dropLifecycle: TabDropLifecycle = .idle
@@ -350,20 +350,39 @@ struct TabBarView: View {
         shouldRenderSplitButtons && (!isMinimalMode || isHoveringTabBar)
     }
 
-    private var splitButtonBackdropStyle: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle {
-        appearance.splitButtonBackdropStyle
-            ?? BonsplitConfiguration.Appearance.SplitButtonBackdropStyle(rawValue: fadeColorStyle)
-            ?? .precompositedPaneBackground
+    private var splitButtonBackdropEffect: BonsplitConfiguration.Appearance.SplitButtonBackdropEffect {
+        if let effect = appearance.splitButtonBackdropEffect {
+            return effect
+        }
+        if let style = appearance.splitButtonBackdropStyle {
+            return .init(style: style)
+        }
+        if let debugStyle = BonsplitConfiguration.Appearance.SplitButtonBackdropStyle(rawValue: fadeColorStyle) {
+            return .init(style: debugStyle, fadeWidth: 24, leadingOpacity: 0, trailingOpacity: 1, masksTabContent: false)
+        }
+        return .default
     }
 
     private var shouldPaintSplitButtonBackdrop: Bool {
         shouldShowSplitButtons
-            && splitButtonBackdropStyle != .hidden
+            && splitButtonBackdropEffect.style != .hidden
             && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
+    }
+
+    private var shouldMaskTabsUnderSplitButtonBackdrop: Bool {
+        shouldPaintSplitButtonBackdrop && splitButtonBackdropEffect.masksTabContent
     }
 
     private var splitButtonsBackdropWidth: CGFloat {
         TabBarStyling.splitButtonsBackdropWidth(buttonCount: visibleSplitButtons.count)
+    }
+
+    private var splitButtonBackdropFadeWidth: CGFloat {
+        min(max(0, splitButtonBackdropEffect.fadeWidth), splitButtonsBackdropWidth)
+    }
+
+    private var splitButtonContentFadeWidth: CGFloat {
+        max(0, splitButtonBackdropEffect.contentFadeWidth)
     }
 
     private var showsControlShortcutHints: Bool {
@@ -537,21 +556,28 @@ struct TabBarView: View {
                 // window drag in minimal mode).
                 .overlay(alignment: .trailing) {
                     if shouldRenderSplitButtons {
-                        let backdropColor = Color(nsColor: Self.buttonBackdropColor(
+                        let effect = splitButtonBackdropEffect
+                        let backdropColor = Self.buttonBackdropColor(
                             for: appearance,
                             focused: isFocused,
-                            style: splitButtonBackdropStyle
-                        ))
+                            style: effect.style
+                        )
                         ZStack(alignment: .trailing) {
                             if shouldPaintSplitButtonBackdrop {
                                 HStack(spacing: 0) {
-                                    LinearGradient(
-                                        colors: [backdropColor.opacity(0), backdropColor],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                    .frame(width: 24)
-                                    Rectangle().fill(backdropColor)
+                                    if splitButtonBackdropFadeWidth > 0 {
+                                        LinearGradient(
+                                            colors: [
+                                                Color(nsColor: Self.backdropColor(backdropColor, opacityMultiplier: effect.leadingOpacity)),
+                                                Color(nsColor: Self.backdropColor(backdropColor, opacityMultiplier: effect.trailingOpacity))
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                        .frame(width: splitButtonBackdropFadeWidth)
+                                    }
+                                    Rectangle()
+                                        .fill(Color(nsColor: Self.backdropColor(backdropColor, opacityMultiplier: effect.trailingOpacity)))
                                 }
                                 .frame(width: splitButtonsBackdropWidth)
                             }
@@ -994,16 +1020,17 @@ struct TabBarView: View {
         }
     }
 
+    private static func backdropColor(_ color: NSColor, opacityMultiplier: CGFloat) -> NSColor {
+        let clamped = min(max(opacityMultiplier, 0), 1)
+        let converted = color.usingColorSpace(.sRGB) ?? color
+        return converted.withAlphaComponent(converted.alphaComponent * clamped)
+    }
+
     // MARK: - Combined Mask (scroll fades + button area)
     //
-    // IMPORTANT: SwiftUI's `.mask()` with `Color.clear` regions blocks hit testing on the
-    // masked content in those regions. Previously this mask used a 90pt clear region at the
-    // trailing edge to hide tabs under the split buttons; that caused clicks on tabs in that
-    // 90pt area to fall through the masked ScrollView to the `TabBarDragAndHoverView`
-    // background, which (in minimal mode) interpreted the click as a window drag instead
-    // of a tab tap. Keep the entire mask opaque so hit testing works on every tab; the split
-    // buttons' opaque backdrop (rendered in the splitButtons overlay) handles the visual
-    // obscuring of tabs underneath.
+    // The split-button backdrop is responsible for occluding content under the controls.
+    // When enabled, tab content fades out before the backdrop ramp starts. This keeps the
+    // transparent start of the backdrop fade from blending over bright tab text/icons.
 
     @ViewBuilder
     private var combinedMask: some View {
@@ -1016,9 +1043,18 @@ struct TabBarView: View {
             // Visible content area (always opaque so hit testing reaches the tabs)
             Rectangle().fill(Color.black)
 
-            // Right scroll fade only when scroll content actually overflows.
-            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollRight ? fadeWidth : 0)
+            if shouldMaskTabsUnderSplitButtonBackdrop {
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: splitButtonContentFadeWidth)
+                // Content is already fully faded before the backdrop ramp starts. This keeps the
+                // beginning of a transparent backdrop fade from blending over bright tab text.
+                Color.clear
+                    .frame(width: splitButtonsBackdropWidth)
+            } else {
+                // Right scroll fade only when scroll content actually overflows.
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: canScrollRight ? fadeWidth : 0)
+            }
         }
     }
 
