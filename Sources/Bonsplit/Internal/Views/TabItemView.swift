@@ -1,6 +1,16 @@
 import SwiftUI
 import AppKit
 
+enum TabControlShortcutHintAnimation {
+    static let visibility: Animation = .easeOut(duration: 0.12)
+}
+
+extension View {
+    func tabControlShortcutHintVisibilityAnimation<Value: Equatable>(value: Value) -> some View {
+        animation(TabControlShortcutHintAnimation.visibility, value: value)
+    }
+}
+
 private enum TabControlShortcutHintDebugSettings {
     static let xKey = "shortcutHintPaneTabXOffset"
     static let yKey = "shortcutHintPaneTabYOffset"
@@ -43,6 +53,7 @@ struct TabItemView: View {
     let appearance: BonsplitConfiguration.Appearance
     let saturation: Double
     let controlShortcutDigit: Int?
+    let allowsShortcutHints: Bool
     let showsControlShortcutHint: Bool
     let shortcutModifierSymbol: String
     let contextMenuState: TabContextMenuState
@@ -173,7 +184,7 @@ struct TabItemView: View {
         )
         .padding(.bottom, isSelected ? 1 : 0)
         .background(tabBackground.saturation(saturation))
-        .animation(.easeInOut(duration: 0.14), value: showsShortcutHint)
+        .tabControlShortcutHintVisibilityAnimation(value: showsShortcutHint)
         .contentShape(Rectangle())
         // Middle click to close (macOS convention).
         // Uses an AppKit event monitor so it doesn't interfere with left click selection or drag/reorder.
@@ -212,7 +223,7 @@ struct TabItemView: View {
     }
 
     private var showsShortcutHint: Bool {
-        (showsControlShortcutHint || alwaysShowShortcutHints) && shortcutHintLabel != nil
+        allowsShortcutHints && (showsControlShortcutHint || alwaysShowShortcutHints) && shortcutHintLabel != nil
     }
 
     private var shortcutHintSlotWidth: CGFloat {
@@ -276,7 +287,7 @@ struct TabItemView: View {
                 .allowsHitTesting(!showsShortcutHint)
         }
         .frame(width: shortcutHintSlotWidth, height: accessorySlotSize, alignment: .center)
-        .animation(.easeInOut(duration: 0.14), value: showsShortcutHint)
+        .tabControlShortcutHintVisibilityAnimation(value: showsShortcutHint)
     }
 
     private func updateGlobeFallback() {
