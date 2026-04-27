@@ -561,6 +561,9 @@ struct TabBarView: View {
             },
             onHoverChanged: { isHoveringTabBar = $0 }
         ))
+        .overlay(
+            TabBarHoverTrackingView { isHoveringTabBar = $0 }
+        )
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
@@ -1121,6 +1124,112 @@ private struct SplitActionButtonStyle: ButtonStyle {
             .foregroundStyle(TabBarColors.splitActionIcon(for: appearance, isPressed: configuration.isPressed))
             .opacity(configuration.isPressed ? 0.72 : 1.0)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+    }
+}
+
+private struct TabBarHoverTrackingView: NSViewRepresentable {
+    let onHoverChanged: (Bool) -> Void
+
+    func makeNSView(context: Context) -> HoverNSView {
+        let view = HoverNSView()
+        view.onHoverChanged = onHoverChanged
+        return view
+    }
+
+    func updateNSView(_ nsView: HoverNSView, context: Context) {
+        nsView.onHoverChanged = onHoverChanged
+    }
+
+    final class HoverNSView: NSView {
+        var onHoverChanged: ((Bool) -> Void)?
+        private var trackingArea: NSTrackingArea?
+        private var localMouseMonitor: Any?
+        private var isHovering = false
+
+        deinit {
+            removeLocalMouseMonitor()
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard bounds.contains(point) else { return nil }
+            switch NSApp.currentEvent?.type {
+            case .mouseMoved, .mouseEntered, .mouseExited, .cursorUpdate:
+                return self
+            default:
+                return nil
+            }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window {
+                window.acceptsMouseMovedEvents = true
+                installLocalMouseMonitorIfNeeded()
+                updateHoverFromCurrentMouseLocation()
+            } else {
+                removeLocalMouseMonitor()
+                emitHoverChanged(false)
+            }
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let trackingArea {
+                removeTrackingArea(trackingArea)
+            }
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
+                owner: self
+            )
+            addTrackingArea(area)
+            trackingArea = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            updateHoverFromCurrentMouseLocation()
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            updateHoverFromCurrentMouseLocation()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            updateHoverFromCurrentMouseLocation()
+        }
+
+        private func installLocalMouseMonitorIfNeeded() {
+            guard localMouseMonitor == nil else { return }
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.mouseMoved, .mouseEntered, .mouseExited, .leftMouseDown, .leftMouseDragged]
+            ) { [weak self] event in
+                self?.updateHoverFromCurrentMouseLocation()
+                return event
+            }
+        }
+
+        private func removeLocalMouseMonitor() {
+            if let localMouseMonitor {
+                NSEvent.removeMonitor(localMouseMonitor)
+                self.localMouseMonitor = nil
+            }
+        }
+
+        private func updateHoverFromCurrentMouseLocation() {
+            guard let window else {
+                emitHoverChanged(false)
+                return
+            }
+            let rectInWindow = convert(bounds, to: nil)
+            let rectInScreen = window.convertToScreen(rectInWindow)
+            emitHoverChanged(rectInScreen.contains(NSEvent.mouseLocation))
+        }
+
+        private func emitHoverChanged(_ newValue: Bool) {
+            guard isHovering != newValue else { return }
+            isHovering = newValue
+            onHoverChanged?(newValue)
+        }
     }
 }
 
