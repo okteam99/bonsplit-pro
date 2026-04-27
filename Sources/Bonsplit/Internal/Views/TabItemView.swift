@@ -349,12 +349,6 @@ struct TabItemView: View {
             contextButton("Remove Custom Tab Name", action: .clearName)
         }
 
-        localizedContextButton(
-            "command.copyWorkspaceAndSurfaceIDs.title",
-            defaultValue: "Copy Workspace and Surface IDs",
-            action: .copyIdentifiers
-        )
-
         Divider()
 
         contextButton("Close Tabs to Left", action: .closeToLeft)
@@ -419,6 +413,14 @@ struct TabItemView: View {
             contextButton("Mark Tab as Unread", action: .markAsUnread)
                 .disabled(!contextMenuState.canMarkAsUnread)
         }
+
+        Divider()
+
+        localizedContextButton(
+            "command.copyWorkspaceAndSurfaceIDs.title",
+            defaultValue: "Copy Workspace and Surface IDs",
+            action: .copyIdentifiers
+        )
     }
 
     @ViewBuilder
