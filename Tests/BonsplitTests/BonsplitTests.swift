@@ -616,6 +616,44 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(Int(round(barAlpha * 255)), 255)
     }
 
+    func testTabBarAndSplitButtonBackdropSurfacesCanBeExplicit() {
+        let appearance = BonsplitConfiguration.Appearance(
+            chromeColors: .init(
+                backgroundHex: "#010203",
+                tabBarBackgroundHex: "#11223380",
+                splitButtonBackdropHex: "#44556699"
+            )
+        )
+        let barColor = TabBarColors.nsColorBarBackground(for: appearance).usingColorSpace(.sRGB)!
+        let backdropColor = TabBarColors.nsColorSplitButtonBackdropSurface(for: appearance).usingColorSpace(.sRGB)!
+
+        var barRed: CGFloat = 0
+        var barGreen: CGFloat = 0
+        var barBlue: CGFloat = 0
+        var barAlpha: CGFloat = 0
+        barColor.getRed(&barRed, green: &barGreen, blue: &barBlue, alpha: &barAlpha)
+
+        var backdropRed: CGFloat = 0
+        var backdropGreen: CGFloat = 0
+        var backdropBlue: CGFloat = 0
+        var backdropAlpha: CGFloat = 0
+        backdropColor.getRed(
+            &backdropRed,
+            green: &backdropGreen,
+            blue: &backdropBlue,
+            alpha: &backdropAlpha
+        )
+
+        XCTAssertEqual(Int(round(barRed * 255)), 17)
+        XCTAssertEqual(Int(round(barGreen * 255)), 34)
+        XCTAssertEqual(Int(round(barBlue * 255)), 51)
+        XCTAssertEqual(Int(round(barAlpha * 255)), 128)
+        XCTAssertEqual(Int(round(backdropRed * 255)), 68)
+        XCTAssertEqual(Int(round(backdropGreen * 255)), 85)
+        XCTAssertEqual(Int(round(backdropBlue * 255)), 102)
+        XCTAssertEqual(Int(round(backdropAlpha * 255)), 153)
+    }
+
     func testSplitButtonBackdropPrecomposesTranslucentPaneBackground() {
         let appearance = BonsplitConfiguration.Appearance(
             chromeColors: .init(
@@ -651,6 +689,25 @@ final class BonsplitTests: XCTestCase {
         )
 
         XCTAssertTrue(TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance))
+    }
+
+    func testSplitButtonBackdropEffectTracksSolidWidthSeparately() {
+        let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            fadeWidth: 80,
+            contentFadeWidth: 42,
+            solidWidth: 32,
+            fadeRampStartFraction: 0.58
+        )
+
+        XCTAssertEqual(effect.fadeWidth, 80)
+        XCTAssertEqual(effect.contentFadeWidth, 42)
+        XCTAssertEqual(effect.solidWidth, 32)
+        XCTAssertEqual(effect.fadeRampStartFraction, 0.58)
+
+        let clamped = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            fadeRampStartFraction: 1.4
+        )
+        XCTAssertEqual(clamped.fadeRampStartFraction, 0.95)
     }
 
     func testChromeBorderHexOverrideParsesForSeparatorColor() {

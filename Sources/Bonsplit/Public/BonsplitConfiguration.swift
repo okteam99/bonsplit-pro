@@ -350,14 +350,18 @@ extension BonsplitConfiguration {
             public var style: SplitButtonBackdropStyle
             public var fadeWidth: CGFloat
             public var contentFadeWidth: CGFloat
+            public var solidWidth: CGFloat
+            public var fadeRampStartFraction: CGFloat
             public var leadingOpacity: CGFloat
             public var trailingOpacity: CGFloat
             public var masksTabContent: Bool
 
             public init(
                 style: SplitButtonBackdropStyle = .translucentChrome,
-                fadeWidth: CGFloat = 24,
-                contentFadeWidth: CGFloat = 24,
+                fadeWidth: CGFloat = 96,
+                contentFadeWidth: CGFloat = 42,
+                solidWidth: CGFloat = 18,
+                fadeRampStartFraction: CGFloat = 0.82,
                 leadingOpacity: CGFloat = 0,
                 trailingOpacity: CGFloat = 1.0,
                 masksTabContent: Bool = true
@@ -365,6 +369,8 @@ extension BonsplitConfiguration {
                 self.style = style
                 self.fadeWidth = max(0, fadeWidth)
                 self.contentFadeWidth = max(0, contentFadeWidth)
+                self.solidWidth = max(0, solidWidth)
+                self.fadeRampStartFraction = min(max(0, fadeRampStartFraction), 0.95)
                 self.leadingOpacity = min(max(0, leadingOpacity), 1)
                 self.trailingOpacity = min(max(0, trailingOpacity), 1)
                 self.masksTabContent = masksTabContent
@@ -374,9 +380,17 @@ extension BonsplitConfiguration {
         }
 
         public struct ChromeColors: Sendable {
-            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for tab chrome backgrounds.
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for general chrome backgrounds.
             /// When unset, Bonsplit uses native system colors.
             public var backgroundHex: String?
+
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the tab bar's resolved surface.
+            /// When unset, Bonsplit falls back to `backgroundHex`.
+            public var tabBarBackgroundHex: String?
+
+            /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the split action button backdrop.
+            /// When unset, Bonsplit falls back to `tabBarBackgroundHex`, then `backgroundHex`.
+            public var splitButtonBackdropHex: String?
 
             /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for the split pane background.
             /// When unset, Bonsplit falls back to `backgroundHex`.
@@ -388,10 +402,14 @@ extension BonsplitConfiguration {
 
             public init(
                 backgroundHex: String? = nil,
+                tabBarBackgroundHex: String? = nil,
+                splitButtonBackdropHex: String? = nil,
                 paneBackgroundHex: String? = nil,
                 borderHex: String? = nil
             ) {
                 self.backgroundHex = backgroundHex
+                self.tabBarBackgroundHex = tabBarBackgroundHex
+                self.splitButtonBackdropHex = splitButtonBackdropHex
                 self.paneBackgroundHex = paneBackgroundHex
                 self.borderHex = borderHex
             }
