@@ -335,6 +335,17 @@ extension BonsplitConfiguration {
     }
 
     public struct Appearance: Sendable {
+        public enum SplitButtonBackdropStyle: Int, CaseIterable, Sendable {
+            case precompositedPaneBackground = 0
+            case opaquePaneBackground = 1
+            case opaqueBarBackground = 2
+            case windowBackground = 3
+            case controlBackground = 4
+            case precompositedBarBackground = 5
+            case translucentChrome = 6
+            case hidden = 7
+        }
+
         public struct ChromeColors: Sendable {
             /// Optional hex color (`#RRGGBB` or `#RRGGBBAA`) for tab chrome backgrounds.
             /// When unset, Bonsplit uses native system colors.
@@ -400,6 +411,10 @@ extension BonsplitConfiguration {
         /// When true, split buttons are only visible on hover
         public var splitButtonsOnHover: Bool
 
+        /// Optional explicit backdrop style for the tab bar's right-side action buttons.
+        /// When unset, Bonsplit uses the host app's debug override if one is configured.
+        public var splitButtonBackdropStyle: SplitButtonBackdropStyle?
+
         /// Extra leading inset for the tab bar (e.g. for traffic light buttons when sidebar is collapsed)
         public var tabBarLeadingInset: CGFloat
 
@@ -451,6 +466,7 @@ extension BonsplitConfiguration {
             showSplitButtons: Bool = true,
             splitButtons: [SplitActionButton] = SplitActionButton.defaults,
             splitButtonsOnHover: Bool = false,
+            splitButtonBackdropStyle: SplitButtonBackdropStyle? = nil,
             tabBarLeadingInset: CGFloat = 0,
             splitButtonTooltips: SplitButtonTooltips = .default,
             animationDuration: Double = 0.15,
@@ -467,6 +483,7 @@ extension BonsplitConfiguration {
             self.showSplitButtons = showSplitButtons
             self.splitButtons = Self.uniqueSplitButtons(splitButtons)
             self.splitButtonsOnHover = splitButtonsOnHover
+            self.splitButtonBackdropStyle = splitButtonBackdropStyle
             self.tabBarLeadingInset = tabBarLeadingInset
             self.splitButtonTooltips = splitButtonTooltips
             self.animationDuration = animationDuration

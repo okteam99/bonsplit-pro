@@ -350,8 +350,16 @@ struct TabBarView: View {
         shouldRenderSplitButtons && (!isMinimalMode || isHoveringTabBar)
     }
 
+    private var splitButtonBackdropStyle: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle {
+        appearance.splitButtonBackdropStyle
+            ?? BonsplitConfiguration.Appearance.SplitButtonBackdropStyle(rawValue: fadeColorStyle)
+            ?? .precompositedPaneBackground
+    }
+
     private var shouldPaintSplitButtonBackdrop: Bool {
-        shouldShowSplitButtons && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
+        shouldShowSplitButtons
+            && splitButtonBackdropStyle != .hidden
+            && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
     }
 
     private var splitButtonsBackdropWidth: CGFloat {
@@ -532,7 +540,7 @@ struct TabBarView: View {
                         let backdropColor = Color(nsColor: Self.buttonBackdropColor(
                             for: appearance,
                             focused: isFocused,
-                            style: fadeColorStyle
+                            style: splitButtonBackdropStyle
                         ))
                         ZStack(alignment: .trailing) {
                             if shouldPaintSplitButtonBackdrop {
@@ -950,19 +958,19 @@ struct TabBarView: View {
     private static func buttonBackdropColor(
         for appearance: BonsplitConfiguration.Appearance,
         focused: Bool,
-        style: Int
+        style: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle
     ) -> NSColor {
         switch style {
-        case 1: // raw paneBackground forced opaque
+        case .opaquePaneBackground:
             return TabBarColors.nsColorPaneBackground(for: appearance).withAlphaComponent(1.0)
-        case 2: // barBackground (tab bar chrome)
+        case .opaqueBarBackground:
             let c = NSColor(TabBarColors.barBackground(for: appearance))
             return (c.usingColorSpace(.sRGB) ?? c).withAlphaComponent(1.0)
-        case 3: // windowBackgroundColor
+        case .windowBackground:
             return NSColor.windowBackgroundColor.withAlphaComponent(1.0)
-        case 4: // controlBackgroundColor
+        case .controlBackground:
             return NSColor.controlBackgroundColor.withAlphaComponent(1.0)
-        case 5: // pre-composited barBackground over windowBg
+        case .precompositedBarBackground:
             let chrome = NSColor(TabBarColors.barBackground(for: appearance))
             let winBg = NSColor.windowBackgroundColor
             guard let fg = chrome.usingColorSpace(.sRGB),
@@ -975,7 +983,13 @@ struct TabBarView: View {
             let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
             let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
             return NSColor(red: r, green: g, blue: b, alpha: 1.0)
-        default: // 0: pre-composited pane background over window background
+        case .translucentChrome:
+            let backdrop = TabBarColors.nsColorChromeBackground(for: appearance)
+            let alpha = focused ? backdrop.alphaComponent : backdrop.alphaComponent * 0.95
+            return backdrop.withAlphaComponent(alpha)
+        case .hidden:
+            return .clear
+        case .precompositedPaneBackground:
             return TabBarColors.nsColorSplitButtonBackdrop(for: appearance, focused: focused)
         }
     }
