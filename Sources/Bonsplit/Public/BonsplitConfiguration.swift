@@ -354,6 +354,7 @@ extension BonsplitConfiguration {
             public var fadeRampStartFraction: CGFloat
             public var leadingOpacity: CGFloat
             public var trailingOpacity: CGFloat
+            public var contentOcclusionFraction: CGFloat
             public var masksTabContent: Bool
 
             public init(
@@ -364,6 +365,7 @@ extension BonsplitConfiguration {
                 fadeRampStartFraction: CGFloat = 0.80,
                 leadingOpacity: CGFloat = 0,
                 trailingOpacity: CGFloat = 0.80,
+                contentOcclusionFraction: CGFloat = 1.0,
                 masksTabContent: Bool = true
             ) {
                 self.style = style
@@ -373,6 +375,7 @@ extension BonsplitConfiguration {
                 self.fadeRampStartFraction = min(max(0, fadeRampStartFraction), 0.95)
                 self.leadingOpacity = min(max(0, leadingOpacity), 1)
                 self.trailingOpacity = min(max(0, trailingOpacity), 1)
+                self.contentOcclusionFraction = min(max(0, contentOcclusionFraction), 1)
                 self.masksTabContent = masksTabContent
             }
 

@@ -401,6 +401,10 @@ struct TabBarView: View {
         max(0, splitButtonBackdropEffect.contentFadeWidth)
     }
 
+    private var splitButtonContentOcclusionWidth: CGFloat {
+        splitButtonsBackdropWidth * min(max(0, splitButtonBackdropEffect.contentOcclusionFraction), 1)
+    }
+
     private var showsControlShortcutHints: Bool {
         isFocused && controlKeyMonitor.isShortcutHintVisible
     }
@@ -1045,7 +1049,7 @@ struct TabBarView: View {
                 // Content is already fully faded before the backdrop ramp starts. This keeps the
                 // beginning of a transparent backdrop fade from blending over bright tab text.
                 Color.clear
-                    .frame(width: splitButtonsBackdropWidth)
+                    .frame(width: splitButtonContentOcclusionWidth)
             } else {
                 // Right scroll fade only when scroll content actually overflows.
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)

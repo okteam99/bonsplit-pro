@@ -696,18 +696,22 @@ final class BonsplitTests: XCTestCase {
             fadeWidth: 80,
             contentFadeWidth: 42,
             solidWidth: 32,
-            fadeRampStartFraction: 0.58
+            fadeRampStartFraction: 0.58,
+            contentOcclusionFraction: 0.25
         )
 
         XCTAssertEqual(effect.fadeWidth, 80)
         XCTAssertEqual(effect.contentFadeWidth, 42)
         XCTAssertEqual(effect.solidWidth, 32)
         XCTAssertEqual(effect.fadeRampStartFraction, 0.58)
+        XCTAssertEqual(effect.contentOcclusionFraction, 0.25)
 
         let clamped = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
-            fadeRampStartFraction: 1.4
+            fadeRampStartFraction: 1.4,
+            contentOcclusionFraction: 2.2
         )
         XCTAssertEqual(clamped.fadeRampStartFraction, 0.95)
+        XCTAssertEqual(clamped.contentOcclusionFraction, 1.0)
     }
 
     func testChromeBorderHexOverrideParsesForSeparatorColor() {
