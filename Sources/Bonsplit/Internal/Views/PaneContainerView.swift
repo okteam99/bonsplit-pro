@@ -542,7 +542,11 @@ struct UnifiedPaneDropDelegate: DropDelegate {
                 return false
             }
         } else if hasFileURL {
-            guard bonsplitController.onExternalFileDrop != nil || controller.onFileDrop != nil else {
+            guard Self.acceptsFileDrop(
+                zone: effectiveZone(for: info),
+                hasExternalFileDropHandler: bonsplitController.onExternalFileDrop != nil,
+                hasLegacyFileDropHandler: controller.onFileDrop != nil
+            ) else {
                 return false
             }
         }
@@ -556,6 +560,20 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         )
 #endif
         return true
+    }
+
+    static func acceptsFileDrop(
+        zone: DropZone,
+        hasExternalFileDropHandler: Bool,
+        hasLegacyFileDropHandler: Bool
+    ) -> Bool {
+        if hasExternalFileDropHandler {
+            return true
+        }
+        guard hasLegacyFileDropHandler else {
+            return false
+        }
+        return zone == .center
     }
 
     private func dropOperation(for info: DropInfo) -> DropOperation {
@@ -594,8 +612,15 @@ struct UnifiedPaneDropDelegate: DropDelegate {
     }
 
     private func fileURLs(from info: DropInfo) -> [URL] {
-        _ = info
-        let pasteboard = NSPasteboard(name: .drag)
+        guard info.hasItemsConforming(to: [.fileURL]) else { return [] }
+
+        // DropInfo exposes file URLs through asynchronous item providers, but
+        // DropDelegate.performDrop needs a synchronous result. AppKit publishes
+        // Finder/local file drags on the drag pasteboard for this callback.
+        return Self.fileURLs(from: NSPasteboard(name: .drag))
+    }
+
+    static func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
         let objects = pasteboard.readObjects(
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
