@@ -977,6 +977,10 @@ struct TabBarView: View {
         focused: Bool,
         style: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle
     ) -> NSColor {
+        if appearance.usesSharedBackdrop {
+            return TabBarColors.nsColorSplitButtonBackdropSurface(for: appearance)
+        }
+
         switch style {
         case .opaquePaneBackground:
             return TabBarColors.nsColorPaneBackground(for: appearance).withAlphaComponent(1.0)
@@ -1024,6 +1028,42 @@ struct TabBarView: View {
             green: source.greenComponent * inverse + destination.greenComponent * clampedAmount,
             blue: source.blueComponent * inverse + destination.blueComponent * clampedAmount,
             alpha: source.alphaComponent * inverse + destination.alphaComponent * clampedAmount
+        )
+    }
+
+    private static func splitButtonBackdropColors(
+        from base: NSColor,
+        to target: NSColor,
+        leadingOpacity: CGFloat,
+        trailingOpacity: CGFloat,
+        usesSharedBackdrop: Bool
+    ) -> (leading: NSColor, trailing: NSColor) {
+        if usesSharedBackdrop {
+            return (
+                alphaOnlySurfaceColor(target, opacity: leadingOpacity),
+                alphaOnlySurfaceColor(target, opacity: trailingOpacity)
+            )
+        }
+
+        return (
+            blendedSurfaceColor(from: base, to: target, amount: leadingOpacity),
+            blendedSurfaceColor(from: base, to: target, amount: trailingOpacity)
+        )
+    }
+
+    private static func alphaOnlySurfaceColor(
+        _ color: NSColor,
+        opacity: CGFloat
+    ) -> NSColor {
+        let clampedOpacity = min(max(opacity, 0), 1)
+        guard let source = color.usingColorSpace(.sRGB) else {
+            return color.withAlphaComponent(color.alphaComponent * clampedOpacity)
+        }
+        return NSColor(
+            red: source.redComponent,
+            green: source.greenComponent,
+            blue: source.blueComponent,
+            alpha: source.alphaComponent * clampedOpacity
         )
     }
 
@@ -1083,14 +1123,11 @@ struct TabBarView: View {
     @ViewBuilder
     private var tabBarBackground: some View {
         let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
-        let barColor = isFocused
+        let barColor = appearance.usesSharedBackdrop || isFocused
             ? baseBarColor
             : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
-        let barFill = Color(nsColor: barColor)
-
         HStack(spacing: 0) {
-            Rectangle()
-                .fill(barFill)
+            TabBarLayerBackedColor(color: barColor)
                 .frame(maxWidth: .infinity)
             if shouldPaintSplitButtonBackdrop {
                 let effect = splitButtonBackdropEffect
@@ -1099,31 +1136,27 @@ struct TabBarView: View {
                     focused: isFocused,
                     style: effect.style
                 )
-                let leadingColor = Self.blendedSurfaceColor(
+                let colors = Self.splitButtonBackdropColors(
                     from: barColor,
                     to: targetColor,
-                    amount: effect.leadingOpacity
-                )
-                let trailingColor = Self.blendedSurfaceColor(
-                    from: barColor,
-                    to: targetColor,
-                    amount: effect.trailingOpacity
+                    leadingOpacity: effect.leadingOpacity,
+                    trailingOpacity: effect.trailingOpacity,
+                    usesSharedBackdrop: appearance.usesSharedBackdrop
                 )
                 if splitButtonBackdropFadeWidth > 0 {
                     let rampStart = splitButtonBackdropFadeRampStartFraction
                     LinearGradient(
                         stops: [
-                            .init(color: Color(nsColor: leadingColor), location: 0),
-                            .init(color: Color(nsColor: leadingColor), location: rampStart),
-                            .init(color: Color(nsColor: trailingColor), location: 1)
+                            .init(color: Color(nsColor: colors.leading), location: 0),
+                            .init(color: Color(nsColor: colors.leading), location: rampStart),
+                            .init(color: Color(nsColor: colors.trailing), location: 1)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
                     .frame(width: splitButtonBackdropFadeWidth)
                 }
-                Rectangle()
-                    .fill(Color(nsColor: trailingColor))
+                TabBarLayerBackedColor(color: colors.trailing)
                     .frame(width: splitButtonBackdropSolidWidth)
             }
         }
@@ -1150,6 +1183,52 @@ struct TabBarView: View {
                 }
                 .frame(height: 1)
             }
+    }
+}
+
+private struct TabBarLayerBackedColor: NSViewRepresentable {
+    let color: NSColor
+
+    func makeNSView(context _: Context) -> NSView {
+        let view = View()
+        view.setColor(color)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context _: Context) {
+        (nsView as? View)?.setColor(color)
+    }
+
+    private final class View: NSView {
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            setup()
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            setup()
+        }
+
+        override var isOpaque: Bool { false }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            nil
+        }
+
+        private func setup() {
+            wantsLayer = true
+            layer?.masksToBounds = true
+            layer?.isOpaque = false
+        }
+
+        func setColor(_ color: NSColor) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer?.backgroundColor = color.cgColor
+            layer?.isOpaque = color.alphaComponent >= 1
+            CATransaction.commit()
+        }
     }
 }
 
@@ -1564,8 +1643,29 @@ private struct TabBarScrollViewResolver: NSViewRepresentable {
         func resolveScrollView() {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                onResolve?(self.enclosingScrollView)
+                let scrollView = self.enclosingScrollView
+                self.makeScrollStackTransparent(scrollView)
+                onResolve?(scrollView)
             }
+        }
+
+        private func makeScrollStackTransparent(_ scrollView: NSScrollView?) {
+            scrollView?.drawsBackground = false
+            scrollView?.backgroundColor = .clear
+            scrollView?.wantsLayer = true
+            scrollView?.layer?.backgroundColor = NSColor.clear.cgColor
+            scrollView?.layer?.isOpaque = false
+
+            let clipView = scrollView?.contentView
+            clipView?.drawsBackground = false
+            clipView?.backgroundColor = .clear
+            clipView?.wantsLayer = true
+            clipView?.layer?.backgroundColor = NSColor.clear.cgColor
+            clipView?.layer?.isOpaque = false
+
+            scrollView?.documentView?.wantsLayer = true
+            scrollView?.documentView?.layer?.backgroundColor = NSColor.clear.cgColor
+            scrollView?.documentView?.layer?.isOpaque = false
         }
     }
 }
