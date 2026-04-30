@@ -57,6 +57,14 @@ private struct SelectedTabFramePreferenceKey: PreferenceKey {
     }
 }
 
+private struct TabFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 @MainActor
 private final class TabBarScrollViewBridge: ObservableObject {
     private struct ScrollMetrics {
@@ -311,6 +319,7 @@ struct TabBarView: View {
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
     @State private var selectedTabFrameInBar: CGRect?
+    @State private var tabFramesInBar: [UUID: CGRect] = [:]
     @StateObject private var controlKeyMonitor = TabControlShortcutKeyMonitor()
     @StateObject private var scrollViewBridge = TabBarScrollViewBridge()
 
@@ -336,6 +345,10 @@ struct TabBarView: View {
 
     private var appearance: BonsplitConfiguration.Appearance {
         controller.configuration.appearance
+    }
+
+    private var tabBarHeight: CGFloat {
+        max(1, appearance.tabBarHeight)
     }
 
     private var visibleSplitButtons: [BonsplitConfiguration.SplitActionButton] {
@@ -486,7 +499,7 @@ struct TabBarView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: TabBarMetrics.tabSpacing) {
                             Color.clear
-                                .frame(width: 0, height: TabBarMetrics.tabHeight)
+                                .frame(width: 0, height: tabBarHeight)
                                 .id(leadingScrollAnchorId)
 
                             ForEach(Array(pane.tabs.enumerated()), id: \.element.id) { index, tab in
@@ -539,7 +552,7 @@ struct TabBarView: View {
                             ) {
                                 performNewTerminalSplitButtonAction()
                             }
-                            .frame(width: trailing + 30, height: TabBarMetrics.tabHeight)
+                            .frame(width: trailing + 30, height: tabBarHeight)
                             .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
                                 targetIndex: pane.tabs.count,
                                 pane: pane,
@@ -566,7 +579,7 @@ struct TabBarView: View {
                         scrollToPreferredTarget(proxy, selectedTabId: newTabId)
                     }
                 }
-                .frame(height: TabBarMetrics.barHeight)
+                .frame(height: tabBarHeight)
                 .mask(combinedMask)
                 // Split buttons sit on top of the tab strip. Their backing surface is
                 // painted by `tabBarBackground` so translucent colors are composited once,
@@ -585,7 +598,7 @@ struct TabBarView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: TabBarMetrics.barHeight)
+        .frame(height: tabBarHeight)
         .coordinateSpace(name: "tabBar")
         .background(tabBarBackground)
         .background(TabBarDragAndHoverView(
@@ -595,6 +608,19 @@ struct TabBarView: View {
             },
             onHoverChanged: { isHoveringTabBar = $0 }
         ))
+        .overlay(
+            TabBarHoverTrackingView { isHoveringTabBar = $0 }
+        )
+        .overlay(
+            TabBarManualReorderTrackingView(
+                pane: pane,
+                bonsplitController: controller,
+                splitViewController: splitViewController,
+                tabFrames: tabFramesInBar,
+                dropTargetIndex: $dropTargetIndex,
+                dropLifecycle: $dropLifecycle
+            )
+        )
         .background(
             TabBarHostWindowReader { window in
                 controlKeyMonitor.setHostWindow(window)
@@ -620,6 +646,9 @@ struct TabBarView: View {
         }
         .onPreferenceChange(SelectedTabFramePreferenceKey.self) { frame in
             selectedTabFrameInBar = frame
+        }
+        .onPreferenceChange(TabFramePreferenceKey.self) { frames in
+            tabFramesInBar = frames
         }
         .onDisappear {
             controlKeyMonitor.stop()
@@ -675,12 +704,16 @@ struct TabBarView: View {
         )
         .background(
             GeometryReader { geometry in
-                Color.clear.preference(
-                    key: SelectedTabFramePreferenceKey.self,
-                    value: pane.selectedTabId == tab.id
-                        ? geometry.frame(in: .named("tabBar"))
-                        : nil
-                )
+                let frame = geometry.frame(in: .named("tabBar"))
+                Color.clear
+                    .preference(
+                        key: SelectedTabFramePreferenceKey.self,
+                        value: pane.selectedTabId == tab.id ? frame : nil
+                    )
+                    .preference(
+                        key: TabFramePreferenceKey.self,
+                        value: [tab.id: frame]
+                    )
             }
         )
         .onDrag {
@@ -699,6 +732,7 @@ struct TabBarView: View {
         .overlay(alignment: .leading) {
             if dropTargetIndex == index {
                 dropIndicator
+                    .accessibilityIdentifier("paneTabBar.dropIndicator")
                     .saturation(tabBarSaturation)
             }
         }
@@ -833,7 +867,7 @@ struct TabBarView: View {
         ) {
             performNewTerminalSplitButtonAction()
         }
-        .frame(width: 30, height: TabBarMetrics.tabHeight)
+        .frame(width: 30, height: tabBarHeight)
         .onDrop(of: [.tabTransfer], delegate: TabDropDelegate(
             targetIndex: pane.tabs.count,
             pane: pane,
@@ -845,6 +879,7 @@ struct TabBarView: View {
         .overlay(alignment: .leading) {
             if dropTargetIndex == pane.tabs.count {
                 dropIndicator
+                    .accessibilityIdentifier("paneTabBar.dropIndicator")
                     .saturation(tabBarSaturation)
             }
         }
@@ -875,11 +910,27 @@ struct TabBarView: View {
                     splitActionButtonIcon(button.icon)
                 }
                 .buttonStyle(SplitActionButtonStyle(appearance: appearance))
+                .accessibilityIdentifier(splitActionButtonAccessibilityIdentifier(button))
                 .safeHelp(splitActionButtonTooltip(button, tooltips: tooltips))
             }
         }
         .padding(.leading, TabBarStyling.splitButtonsLeadingPadding)
         .padding(.trailing, TabBarStyling.splitButtonsTrailingPadding)
+    }
+
+    private func splitActionButtonAccessibilityIdentifier(_ button: BonsplitConfiguration.SplitActionButton) -> String {
+        switch button.action {
+        case .newTerminal:
+            return "paneTabBarControl.newTerminal"
+        case .newBrowser:
+            return "paneTabBarControl.newBrowser"
+        case .splitRight:
+            return "paneTabBarControl.splitRight"
+        case .splitDown:
+            return "paneTabBarControl.splitDown"
+        case .custom(let identifier):
+            return "paneTabBarControl.custom.\(identifier)"
+        }
     }
 
     @ViewBuilder
@@ -1282,6 +1333,379 @@ private struct SplitActionButtonStyle: ButtonStyle {
     }
 }
 
+private struct TabBarHoverTrackingView: NSViewRepresentable {
+    let onHoverChanged: (Bool) -> Void
+
+    func makeNSView(context: Context) -> HoverNSView {
+        let view = HoverNSView()
+        view.onHoverChanged = onHoverChanged
+        return view
+    }
+
+    func updateNSView(_ nsView: HoverNSView, context: Context) {
+        nsView.onHoverChanged = onHoverChanged
+    }
+
+    final class HoverNSView: NSView {
+        var onHoverChanged: ((Bool) -> Void)?
+        private var trackingArea: NSTrackingArea?
+        private var localMouseMonitor: Any?
+        private var isHovering = false
+
+        deinit {
+            removeLocalMouseMonitor()
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window {
+                window.acceptsMouseMovedEvents = true
+                installLocalMouseMonitorIfNeeded()
+                updateHoverFromCurrentMouseLocation()
+            } else {
+                removeLocalMouseMonitor()
+                emitHoverChanged(false)
+            }
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let trackingArea {
+                removeTrackingArea(trackingArea)
+            }
+            let area = NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
+                owner: self
+            )
+            addTrackingArea(area)
+            trackingArea = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            updateHover(from: event)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            updateHover(from: event)
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            updateHover(from: event)
+        }
+
+        private func installLocalMouseMonitorIfNeeded() {
+            guard localMouseMonitor == nil else { return }
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.mouseMoved, .mouseEntered, .mouseExited, .leftMouseDown, .leftMouseDragged]
+            ) { [weak self] event in
+                self?.updateHover(from: event)
+                return event
+            }
+        }
+
+        private func removeLocalMouseMonitor() {
+            if let localMouseMonitor {
+                NSEvent.removeMonitor(localMouseMonitor)
+                self.localMouseMonitor = nil
+            }
+        }
+
+        private func updateHover(from event: NSEvent) {
+            guard let window else {
+                emitHoverChanged(false)
+                return
+            }
+            guard event.window == nil || event.window === window else {
+                emitHoverChanged(false)
+                return
+            }
+
+            let pointInWindow = event.window === window
+                ? event.locationInWindow
+                : window.mouseLocationOutsideOfEventStream
+            let pointInView = convert(pointInWindow, from: nil)
+            emitHoverChanged(bounds.insetBy(dx: -1, dy: -1).contains(pointInView))
+        }
+
+        private func updateHoverFromCurrentMouseLocation() {
+            guard let window else {
+                emitHoverChanged(false)
+                return
+            }
+            let pointInView = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            emitHoverChanged(bounds.insetBy(dx: -1, dy: -1).contains(pointInView))
+        }
+
+        private func emitHoverChanged(_ newValue: Bool) {
+            guard isHovering != newValue else { return }
+            isHovering = newValue
+            onHoverChanged?(newValue)
+        }
+    }
+}
+
+private struct TabBarManualReorderTrackingView: NSViewRepresentable {
+    let pane: PaneState
+    let bonsplitController: BonsplitController
+    let splitViewController: SplitViewController
+    let tabFrames: [UUID: CGRect]
+    @Binding var dropTargetIndex: Int?
+    @Binding var dropLifecycle: TabDropLifecycle
+
+    func makeNSView(context: Context) -> ManualReorderNSView {
+        let view = ManualReorderNSView()
+        update(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: ManualReorderNSView, context: Context) {
+        update(nsView)
+    }
+
+    private func update(_ view: ManualReorderNSView) {
+        view.pane = pane
+        view.bonsplitController = bonsplitController
+        view.splitViewController = splitViewController
+        view.tabFrames = tabFrames
+        view.onDropStateChanged = { targetIndex, lifecycle in
+            dropTargetIndex = targetIndex
+            dropLifecycle = lifecycle
+        }
+    }
+
+    final class ManualReorderNSView: NSView {
+        weak var pane: PaneState?
+        weak var bonsplitController: BonsplitController?
+        weak var splitViewController: SplitViewController?
+        var tabFrames: [UUID: CGRect] = [:]
+        var onDropStateChanged: ((Int?, TabDropLifecycle) -> Void)?
+
+        private var localMouseMonitor: Any?
+        private var session: ManualDragSession?
+
+        private static let dragStartDistanceSquared: CGFloat = 16
+        private static let trailingDropSlop: CGFloat = 30
+
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        deinit {
+            removeLocalMouseMonitor()
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            nil
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                installLocalMouseMonitorIfNeeded()
+            } else {
+                removeLocalMouseMonitor()
+                clearManualDrag()
+            }
+        }
+
+        private func installLocalMouseMonitorIfNeeded() {
+            guard localMouseMonitor == nil else { return }
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            ) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        private func removeLocalMouseMonitor() {
+            if let localMouseMonitor {
+                NSEvent.removeMonitor(localMouseMonitor)
+                self.localMouseMonitor = nil
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard let window else {
+                clearManualDrag()
+                return
+            }
+            guard event.window == nil || event.window === window else {
+                if session != nil {
+                    clearManualDrag()
+                }
+                return
+            }
+
+            let windowPoint = event.window === window
+                ? event.locationInWindow
+                : window.mouseLocationOutsideOfEventStream
+            let point = convert(windowPoint, from: nil)
+
+            switch event.type {
+            case .leftMouseDown:
+                beginTrackingIfNeeded(at: point)
+            case .leftMouseDragged:
+                updateTracking(at: point)
+            case .leftMouseUp:
+                finishTracking()
+            default:
+                break
+            }
+        }
+
+        private func beginTrackingIfNeeded(at point: NSPoint) {
+            guard bounds.contains(point),
+                  let pane,
+                  let splitViewController,
+                  splitViewController.isInteractive,
+                  let source = tab(at: point, in: pane) else {
+                clearManualDrag()
+                return
+            }
+
+            session = ManualDragSession(
+                sourceTab: source,
+                sourcePaneId: pane.id,
+                startPoint: point,
+                currentTargetIndex: nil,
+                didStartDrag: false
+            )
+        }
+
+        private func updateTracking(at point: NSPoint) {
+            guard var session else { return }
+
+            let dx = point.x - session.startPoint.x
+            let dy = point.y - session.startPoint.y
+            if !session.didStartDrag {
+                guard dx * dx + dy * dy >= Self.dragStartDistanceSquared else { return }
+                beginManualDrag(for: session)
+                session.didStartDrag = true
+            }
+
+            let targetIndex = dropTargetIndex(at: point)
+            session.currentTargetIndex = targetIndex
+            self.session = session
+
+            if let targetIndex,
+               !shouldSuppressIndicator(sourceTabId: session.sourceTab.id, targetIndex: targetIndex) {
+                onDropStateChanged?(targetIndex, .hovering)
+            } else {
+                onDropStateChanged?(nil, .idle)
+            }
+        }
+
+        private func finishTracking() {
+            guard let session else {
+                clearManualDrag()
+                return
+            }
+
+            defer {
+                clearControllerDragStateIfNeeded(sourceTabId: session.sourceTab.id)
+                clearManualDrag()
+            }
+
+            guard session.didStartDrag,
+                  let pane,
+                  let bonsplitController,
+                  let targetIndex = session.currentTargetIndex,
+                  !shouldSuppressIndicator(sourceTabId: session.sourceTab.id, targetIndex: targetIndex),
+                  let currentSourceIndex = pane.tabs.firstIndex(where: { $0.id == session.sourceTab.id }) else {
+                return
+            }
+
+            withTransaction(Transaction(animation: nil)) {
+                pane.moveTab(from: currentSourceIndex, to: targetIndex)
+                bonsplitController.focusPane(pane.id)
+            }
+        }
+
+        private func beginManualDrag(for session: ManualDragSession) {
+            guard let splitViewController else { return }
+#if DEBUG
+            dlog(
+                "tab.manualDragStart pane=\(session.sourcePaneId.id.uuidString.prefix(5)) " +
+                    "tab=\(session.sourceTab.id.uuidString.prefix(5)) title=\"\(session.sourceTab.title)\""
+            )
+#endif
+            splitViewController.dragGeneration += 1
+            splitViewController.draggingTab = session.sourceTab
+            splitViewController.dragSourcePaneId = session.sourcePaneId
+            splitViewController.activeDragTab = session.sourceTab
+            splitViewController.activeDragSourcePaneId = session.sourcePaneId
+        }
+
+        private func clearManualDrag() {
+            session = nil
+            onDropStateChanged?(nil, .idle)
+        }
+
+        private func clearControllerDragStateIfNeeded(sourceTabId: UUID) {
+            guard let splitViewController else { return }
+            if splitViewController.draggingTab?.id == sourceTabId {
+                splitViewController.draggingTab = nil
+                splitViewController.dragSourcePaneId = nil
+            }
+            if splitViewController.activeDragTab?.id == sourceTabId {
+                splitViewController.activeDragTab = nil
+                splitViewController.activeDragSourcePaneId = nil
+            }
+        }
+
+        private func tab(at point: NSPoint, in pane: PaneState) -> TabItem? {
+            for tab in pane.tabs {
+                guard let frame = tabFrames[tab.id] else { continue }
+                if point.x >= frame.minX, point.x <= frame.maxX {
+                    return tab
+                }
+            }
+            return nil
+        }
+
+        private func dropTargetIndex(at point: NSPoint) -> Int? {
+            guard bounds.insetBy(dx: 0, dy: -4).contains(point),
+                  let pane,
+                  !pane.tabs.isEmpty else {
+                return nil
+            }
+
+            var lastFrame: CGRect?
+            for (index, tab) in pane.tabs.enumerated() {
+                guard let frame = tabFrames[tab.id] else { continue }
+                lastFrame = frame
+                if point.x < frame.midX {
+                    return index
+                }
+            }
+
+            if let lastFrame,
+               point.x <= lastFrame.maxX + Self.trailingDropSlop {
+                return pane.tabs.count
+            }
+            return nil
+        }
+
+        private func shouldSuppressIndicator(sourceTabId: UUID, targetIndex: Int) -> Bool {
+            guard let pane,
+                  let sourceIndex = pane.tabs.firstIndex(where: { $0.id == sourceTabId }) else {
+                return false
+            }
+            return targetIndex == sourceIndex || targetIndex == sourceIndex + 1
+        }
+
+        private struct ManualDragSession {
+            let sourceTab: TabItem
+            let sourcePaneId: PaneID
+            let startPoint: NSPoint
+            var currentTargetIndex: Int?
+            var didStartDrag: Bool
+        }
+    }
+}
+
 /// Background view that provides window-drag-from-empty-space in minimal mode
 /// and hover tracking via NSTrackingArea (replacing .contentShape + .onHover).
 /// As a .background(), AppKit routes clicks to tabs/buttons in front first;
@@ -1303,7 +1727,6 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         nsView.isMinimalMode = isMinimalMode
         nsView.onDoubleClick = onDoubleClick
         nsView.onHoverChanged = onHoverChanged
-        nsView.syncHoverStateToCurrentMouseLocation()
     }
 
     final class TabBarBackgroundNSView: NSView {
@@ -1313,10 +1736,13 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
         private var hoverTrackingArea: NSTrackingArea?
         private var windowDidBecomeKeyObserver: NSObjectProtocol?
         private var windowDidResignKeyObserver: NSObjectProtocol?
+        private var localMouseMonitor: Any?
+        private var isHovering = false
 
         override var mouseDownCanMoveWindow: Bool { false }
 
         deinit {
+            removeLocalMouseMonitor()
             removeWindowObservers()
             BonsplitTabBarHitRegionRegistry.unregister(self)
         }
@@ -1325,12 +1751,15 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             super.viewDidMoveToWindow()
             BonsplitTabBarHitRegionRegistry.unregister(self)
             removeWindowObservers()
-            if window != nil {
+            if let window {
+                window.acceptsMouseMovedEvents = true
                 BonsplitTabBarHitRegionRegistry.register(self)
                 installWindowObservers()
+                installLocalMouseMonitorIfNeeded()
                 syncHoverStateToCurrentMouseLocation()
             } else {
-                onHoverChanged?(false)
+                removeLocalMouseMonitor()
+                emitHoverChanged(false)
             }
         }
 
@@ -1348,20 +1777,23 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
             }
             let area = NSTrackingArea(
                 rect: bounds,
-                options: [.mouseEnteredAndExited, .activeInActiveApp],
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
                 owner: self
             )
             addTrackingArea(area)
             hoverTrackingArea = area
-            syncHoverStateToCurrentMouseLocation()
         }
 
         override func mouseEntered(with event: NSEvent) {
-            onHoverChanged?(true)
+            emitHoverChanged(true)
         }
 
         override func mouseExited(with event: NSEvent) {
-            onHoverChanged?(false)
+            emitHoverChanged(false)
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            updateHover(from: event)
         }
 
         override func mouseDown(with event: NSEvent) {
@@ -1397,11 +1829,51 @@ private struct TabBarDragAndHoverView: NSViewRepresentable {
 
         func syncHoverStateToCurrentMouseLocation() {
             guard let window else {
-                onHoverChanged?(false)
+                emitHoverChanged(false)
                 return
             }
             let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            onHoverChanged?(bounds.contains(point))
+            emitHoverChanged(bounds.contains(point))
+        }
+
+        private func installLocalMouseMonitorIfNeeded() {
+            guard localMouseMonitor == nil else { return }
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.mouseMoved, .mouseEntered, .mouseExited, .leftMouseDown, .leftMouseDragged]
+            ) { [weak self] event in
+                self?.updateHover(from: event)
+                return event
+            }
+        }
+
+        private func removeLocalMouseMonitor() {
+            if let localMouseMonitor {
+                NSEvent.removeMonitor(localMouseMonitor)
+                self.localMouseMonitor = nil
+            }
+        }
+
+        private func updateHover(from event: NSEvent) {
+            guard let window else {
+                emitHoverChanged(false)
+                return
+            }
+            guard event.window == nil || event.window === window else {
+                emitHoverChanged(false)
+                return
+            }
+
+            let pointInWindow = event.window === window
+                ? event.locationInWindow
+                : window.mouseLocationOutsideOfEventStream
+            let pointInView = convert(pointInWindow, from: nil)
+            emitHoverChanged(bounds.insetBy(dx: -1, dy: -1).contains(pointInView))
+        }
+
+        private func emitHoverChanged(_ newValue: Bool) {
+            guard isHovering != newValue else { return }
+            isHovering = newValue
+            onHoverChanged?(newValue)
         }
 
         private func installWindowObservers() {
