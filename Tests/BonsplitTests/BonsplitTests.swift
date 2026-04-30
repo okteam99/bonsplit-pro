@@ -1350,8 +1350,18 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
-    func testActiveTabIndicatorHeightIsOneAndHalfPixels() {
-        XCTAssertEqual(TabBarMetrics.activeIndicatorHeight, 1.5)
+    func testActiveTabIndicatorHeightIsTwoPixels() {
+        XCTAssertEqual(TabBarMetrics.activeIndicatorHeight, 2)
+    }
+
+    @MainActor
+    func testActiveTabIndicatorLeavesTrailingPixelGap() {
+        guard let width = renderedTabBarIndicatorWidth(isFocused: true) else {
+            XCTFail("Expected rendered tab bar indicator width")
+            return
+        }
+
+        XCTAssertEqual(width, TabBarMetrics.tabMinWidth - 1, accuracy: 0.5)
     }
 
     @MainActor
@@ -1965,6 +1975,22 @@ final class BonsplitTests: XCTestCase {
 
     @MainActor
     private func renderedTabBarIndicatorSaturation(isFocused: Bool) -> CGFloat? {
+        renderedTabBarValue(isFocused: isFocused) { hostingView in
+            let sampleRect = NSRect(x: 4, y: 0, width: 44, height: 4)
+            return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedTabBarIndicatorWidth(isFocused: Bool) -> CGFloat? {
+        renderedTabBarValue(isFocused: isFocused) { hostingView in
+            let sampleRect = NSRect(x: 0, y: 0, width: 80, height: 4)
+            return highSaturationWidth(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedTabBarValue<T>(isFocused: Bool, extract: (NSView) -> T?) -> T? {
         let controller = BonsplitController()
         guard let pane = controller.internalController.rootNode.allPanes.first else { return nil }
         let tab = TabItem(title: "", icon: nil)
@@ -1999,8 +2025,7 @@ final class BonsplitTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         contentView.layoutSubtreeIfNeeded()
 
-        let sampleRect = NSRect(x: 4, y: 0, width: 44, height: 4)
-        return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        return extract(hostingView)
     }
 
     @MainActor
@@ -2035,6 +2060,42 @@ final class BonsplitTests: XCTestCase {
             }
         }
         return maximum
+    }
+
+    @MainActor
+    private func highSaturationWidth(in view: NSView, sampleRect: NSRect) -> CGFloat? {
+        let integralBounds = view.bounds.integral
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: integralBounds) else { return nil }
+        bitmap.size = integralBounds.size
+        view.cacheDisplay(in: integralBounds, to: bitmap)
+
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1, integralBounds.width)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1, integralBounds.height)
+        let minX = max(0, Int(floor(sampleRect.minX * scaleX)))
+        let maxX = min(bitmap.pixelsWide, Int(ceil(sampleRect.maxX * scaleX)))
+        let minY = max(0, Int(floor(sampleRect.minY * scaleY)))
+        let maxY = min(bitmap.pixelsHigh, Int(ceil(sampleRect.maxY * scaleY)))
+
+        var activeColumnCount = 0
+        for x in minX..<maxX {
+            var hasIndicatorPixel = false
+            for y in minY..<maxY {
+                guard let color = bitmap.colorAt(x: x, y: y),
+                      let rgb = color.usingColorSpace(.sRGB),
+                      rgb.alphaComponent > 0.05 else { continue }
+                let high = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                guard high > 0.01 else { continue }
+                let low = min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                if (high - low) / high > 0.4 {
+                    hasIndicatorPixel = true
+                    break
+                }
+            }
+            if hasIndicatorPixel {
+                activeColumnCount += 1
+            }
+        }
+        return CGFloat(activeColumnCount) / scaleX
     }
 
     @MainActor
