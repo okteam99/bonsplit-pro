@@ -1,6 +1,7 @@
 import Foundation
 
 /// Protocol for receiving callbacks about tab bar events
+@MainActor
 public protocol BonsplitDelegate: AnyObject {
     // MARK: - Tab Lifecycle (Veto Operations)
 
