@@ -514,7 +514,7 @@ extension BonsplitConfiguration {
         // MARK: - Initializer
 
         public init(
-            tabBarHeight: CGFloat = 33,
+            tabBarHeight: CGFloat = 30,
             tabMinWidth: CGFloat = 140,
             tabMaxWidth: CGFloat = 220,
             tabTitleFontSize: CGFloat = 11,
