@@ -1350,6 +1350,10 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
+    func testActiveTabIndicatorHeightIsSinglePixel() {
+        XCTAssertEqual(TabBarMetrics.activeIndicatorHeight, 1)
+    }
+
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
         var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
         XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
