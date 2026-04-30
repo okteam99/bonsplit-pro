@@ -175,7 +175,6 @@ struct TabItemView: View {
             trailingAccessory
         }
         .padding(.horizontal, TabBarMetrics.tabHorizontalPadding)
-        .offset(y: isSelected ? 0.5 : 0)
         .frame(
             minWidth: TabBarMetrics.tabMinWidth,
             maxWidth: TabBarMetrics.tabMaxWidth,
@@ -464,13 +463,6 @@ struct TabItemView: View {
                     .fill(TabBarColors.hoveredTabBackground(for: appearance))
             } else {
                 Color.clear
-            }
-
-            // Top accent indicator for selected tab
-            if isSelected {
-                Rectangle()
-                    .fill(Color.accentColor)
-                    .frame(height: TabBarMetrics.activeIndicatorHeight)
             }
 
             // Right border separator
