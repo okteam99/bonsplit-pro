@@ -276,6 +276,80 @@ enum TabBarStyling {
     }
 }
 
+struct TabBarLayout: Equatable {
+    let barHeight: CGFloat
+    let splitButtonCount: Int
+    let splitButtonLaneVisible: Bool
+    let reservesSplitButtonLane: Bool
+
+    init(
+        tabBarHeight: CGFloat,
+        splitButtonCount: Int,
+        splitButtonLaneVisible: Bool,
+        reservesSplitButtonLane: Bool
+    ) {
+        self.barHeight = max(1, tabBarHeight)
+        self.splitButtonCount = max(0, splitButtonCount)
+        self.splitButtonLaneVisible = splitButtonLaneVisible
+        self.reservesSplitButtonLane = reservesSplitButtonLane
+    }
+
+    var fullSplitButtonLaneWidth: CGFloat {
+        TabBarStyling.splitButtonsBackdropWidth(buttonCount: splitButtonCount)
+    }
+
+    var visibleSplitButtonLaneWidth: CGFloat {
+        splitButtonLaneVisible ? fullSplitButtonLaneWidth : 0
+    }
+
+    var trailingTabContentInset: CGFloat {
+        reservesSplitButtonLane ? fullSplitButtonLaneWidth : 0
+    }
+
+    var splitActionButtonWidth: CGFloat {
+        TabBarStyling.splitActionButtonReservedWidth
+    }
+
+    var splitActionButtonHeight: CGFloat {
+        barHeight
+    }
+
+    func selectedSeparatorGap(
+        selectedTabFrame: CGRect?,
+        totalWidth: CGFloat
+    ) -> ClosedRange<CGFloat>? {
+        guard let selectedTabFrame, totalWidth > 0 else { return nil }
+
+        let visibleContentMaxX = max(0, totalWidth - visibleSplitButtonLaneWidth)
+        let minX = min(max(selectedTabFrame.minX, 0), visibleContentMaxX)
+        let maxX = min(max(selectedTabFrame.maxX, 0), visibleContentMaxX)
+        guard maxX > minX else { return nil }
+        return minX...maxX
+    }
+
+    func selectedIndicatorFrame(
+        selectedTabFrame: CGRect?,
+        totalWidth: CGFloat
+    ) -> CGRect? {
+        guard let gap = selectedSeparatorGap(
+            selectedTabFrame: selectedTabFrame,
+            totalWidth: totalWidth
+        ) else { return nil }
+
+        let minX = gap.lowerBound
+        let maxX = gap.upperBound
+        let width = max(0, maxX - minX - TabBarMetrics.activeIndicatorTrailingInset)
+        guard width > 0 else { return nil }
+
+        return CGRect(
+            x: minX,
+            y: 0,
+            width: width,
+            height: TabBarMetrics.activeIndicatorHeight
+        )
+    }
+}
+
 struct TabContextMenuState {
     let isPinned: Bool
     let isUnread: Bool
@@ -349,7 +423,16 @@ struct TabBarView: View {
     }
 
     private var tabBarHeight: CGFloat {
-        max(1, appearance.tabBarHeight)
+        tabBarLayout.barHeight
+    }
+
+    private var tabBarLayout: TabBarLayout {
+        TabBarLayout(
+            tabBarHeight: appearance.tabBarHeight,
+            splitButtonCount: visibleSplitButtons.count,
+            splitButtonLaneVisible: shouldShowSplitButtons,
+            reservesSplitButtonLane: showSplitButtons && !isMinimalMode
+        )
     }
 
     private var visibleSplitButtons: [BonsplitConfiguration.SplitActionButton] {
@@ -397,7 +480,7 @@ struct TabBarView: View {
     }
 
     private var splitButtonsBackdropWidth: CGFloat {
-        TabBarStyling.splitButtonsBackdropWidth(buttonCount: visibleSplitButtons.count)
+        tabBarLayout.fullSplitButtonLaneWidth
     }
 
     private var splitButtonBackdropFadeWidth: CGFloat {
@@ -429,11 +512,7 @@ struct TabBarView: View {
     }
 
     private var trailingTabContentInset: CGFloat {
-        TabBarStyling.trailingTabContentInset(
-            showSplitButtons: showSplitButtons,
-            isMinimalMode: isMinimalMode,
-            buttonCount: visibleSplitButtons.count
-        )
+        tabBarLayout.trailingTabContentInset
     }
 
     private var leadingScrollAnchorId: String {
@@ -590,8 +669,7 @@ struct TabBarView: View {
                     if shouldRenderSplitButtons {
                         splitButtons
                             .saturation(tabBarSaturation)
-                            .padding(.bottom, 1)
-                            .frame(width: splitButtonsBackdropWidth, alignment: .trailing)
+                            .frame(width: splitButtonsBackdropWidth, height: tabBarHeight, alignment: .trailing)
                             .opacity(shouldShowSplitButtons ? 1 : 0)
                             .allowsHitTesting(shouldShowSplitButtons)
                             .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
@@ -920,13 +998,14 @@ struct TabBarView: View {
                 } label: {
                     splitActionButtonIcon(button.icon)
                 }
-                .buttonStyle(SplitActionButtonStyle(appearance: appearance))
+                .buttonStyle(SplitActionButtonStyle(appearance: appearance, layout: tabBarLayout))
                 .accessibilityIdentifier(splitActionButtonAccessibilityIdentifier(button))
                 .safeHelp(splitActionButtonTooltip(button, tooltips: tooltips))
             }
         }
         .padding(.leading, TabBarStyling.splitButtonsLeadingPadding)
         .padding(.trailing, TabBarStyling.splitButtonsTrailingPadding)
+        .frame(height: tabBarHeight, alignment: .center)
     }
 
     private func splitActionButtonAccessibilityIdentifier(_ button: BonsplitConfiguration.SplitActionButton) -> String {
@@ -1253,9 +1332,10 @@ struct TabBarView: View {
             Spacer(minLength: 0)
             HStack(spacing: 0) {
                 let separator = TabBarColors.separator(for: appearance)
-                let gapRange: ClosedRange<CGFloat>? = selectedTabFrameInBar.map { frame in
-                    frame.minX...frame.maxX
-                }
+                let gapRange = tabBarLayout.selectedSeparatorGap(
+                    selectedTabFrame: selectedTabFrameInBar,
+                    totalWidth: totalWidth
+                )
                 let segments = TabBarStyling.separatorSegments(
                     totalWidth: totalWidth,
                     gap: gapRange
@@ -1272,16 +1352,9 @@ struct TabBarView: View {
     }
 
     private func selectedIndicatorFrame(totalWidth: CGFloat) -> CGRect? {
-        guard let selectedTabFrameInBar, totalWidth > 0 else { return nil }
-        let minX = min(max(selectedTabFrameInBar.minX, 0), totalWidth)
-        let maxX = min(max(selectedTabFrameInBar.maxX, 0), totalWidth)
-        let width = max(0, maxX - minX - TabBarMetrics.activeIndicatorTrailingInset)
-        guard width > 0 else { return nil }
-        return CGRect(
-            x: minX,
-            y: 0,
-            width: width,
-            height: TabBarMetrics.activeIndicatorHeight
+        tabBarLayout.selectedIndicatorFrame(
+            selectedTabFrame: selectedTabFrameInBar,
+            totalWidth: totalWidth
         )
     }
 }
@@ -1371,9 +1444,12 @@ private final class SplitActionButtonImageCache {
 
 private struct SplitActionButtonStyle: ButtonStyle {
     let appearance: BonsplitConfiguration.Appearance
+    let layout: TabBarLayout
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(width: layout.splitActionButtonWidth, height: layout.splitActionButtonHeight)
+            .contentShape(Rectangle())
             .foregroundStyle(TabBarColors.splitActionIcon(for: appearance, isPressed: configuration.isPressed))
             .opacity(configuration.isPressed ? 0.72 : 1.0)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
