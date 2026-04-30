@@ -757,6 +757,14 @@ enum TabContextMenuBuilder {
         )
         let submenu = NSMenu()
         submenu.autoenablesItems = false
+        addAction(
+            title: localized("command.moveTabToNewWorkspace.title", defaultValue: "Move Tab to New Workspace"),
+            action: .moveToNewWorkspace,
+            enabled: state.canMoveToNewWorkspace,
+            state: state,
+            target: target,
+            to: submenu
+        )
         for destination in state.moveDestinations {
             let destinationItem = NSMenuItem(
                 title: destination.title,
@@ -769,7 +777,7 @@ enum TabContextMenuBuilder {
             submenu.addItem(destinationItem)
         }
         item.submenu = submenu
-        item.isEnabled = !state.moveDestinations.isEmpty
+        item.isEnabled = state.canMoveToNewWorkspace || !state.moveDestinations.isEmpty
         return item
     }
 

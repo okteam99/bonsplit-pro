@@ -1062,7 +1062,9 @@ final class BonsplitTests: XCTestCase {
     @MainActor
     func testTabContextMenuBuilderCreatesAppKitMoveSubmenu() throws {
         let target = TabContextMenuActionTarget()
+        var selectedAction: TabContextAction?
         var selectedDestinationId: String?
+        target.onContextAction = { selectedAction = $0 }
         target.onMoveDestination = { selectedDestinationId = $0 }
         let state = TabContextMenuState(
             isPinned: false,
@@ -1079,7 +1081,6 @@ final class BonsplitTests: XCTestCase {
             isZoomed: false,
             hasSplits: true,
             moveDestinations: [
-                TabContextMoveDestination(id: "new-workspace", title: "New Workspace"),
                 TabContextMoveDestination(id: "workspace:abc", title: "Workspace A", isEnabled: false)
             ],
             shortcuts: [:]
@@ -1091,12 +1092,16 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertNotNil(moveItem)
         XCTAssertTrue(moveItem?.isEnabled ?? false)
-        XCTAssertEqual(moveItem?.submenu?.items.map(\.title), ["New Workspace", "Workspace A"])
+        XCTAssertEqual(moveItem?.submenu?.items.map(\.title), ["Move Tab to New Workspace", "Workspace A"])
         XCTAssertEqual(moveItem?.submenu?.items.map(\.isEnabled), [true, false])
 
         let newWorkspaceItem = try XCTUnwrap(moveItem?.submenu?.items.first)
-        target.performMoveDestination(newWorkspaceItem)
-        XCTAssertEqual(selectedDestinationId, "new-workspace")
+        target.performContextAction(newWorkspaceItem)
+        XCTAssertEqual(selectedAction, .moveToNewWorkspace)
+
+        let workspaceItem = try XCTUnwrap(moveItem?.submenu?.items.dropFirst().first)
+        target.performMoveDestination(workspaceItem)
+        XCTAssertEqual(selectedDestinationId, "workspace:abc")
     }
 
     @MainActor
