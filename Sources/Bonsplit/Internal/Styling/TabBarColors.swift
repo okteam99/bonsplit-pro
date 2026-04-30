@@ -35,6 +35,19 @@ enum TabBarColors {
         return NSColor(bonsplitHex: value)
     }
 
+    private static func nonClearColor(_ color: NSColor?) -> NSColor? {
+        guard let color else { return nil }
+        let resolved = color.usingColorSpace(.sRGB) ?? color
+        return resolved.alphaComponent <= 0.001 ? nil : resolved
+    }
+
+    private static func semanticTabBarBackgroundColor(
+        for appearance: BonsplitConfiguration.Appearance
+    ) -> NSColor? {
+        nonClearColor(tabBarBackgroundColor(for: appearance))
+            ?? nonClearColor(chromeBackgroundColor(for: appearance))
+    }
+
     private static func splitButtonBackdropColor(
         for appearance: BonsplitConfiguration.Appearance
     ) -> NSColor? {
@@ -80,7 +93,7 @@ enum TabBarColors {
         for appearance: BonsplitConfiguration.Appearance,
         secondary: Bool
     ) -> NSColor {
-        guard let custom = tabBarBackgroundColor(for: appearance) else {
+        guard let custom = semanticTabBarBackgroundColor(for: appearance) else {
             return secondary ? .secondaryLabelColor : .labelColor
         }
 
@@ -151,6 +164,13 @@ enum TabBarColors {
         guard let custom = tabBarBackgroundColor(for: appearance) else {
             return activeTabBackground
         }
+        if appearance.usesSharedBackdrop {
+            let semanticBackground = semanticTabBarBackgroundColor(for: appearance) ?? custom
+            let overlayColor = semanticBackground.isBonsplitLightColor
+                ? NSColor.black.withAlphaComponent(0.06)
+                : NSColor.white.withAlphaComponent(0.08)
+            return Color(nsColor: overlayColor)
+        }
         let adjusted = custom.isBonsplitLightColor
             ? custom.bonsplitDarken(by: 0.065)
             : custom.bonsplitLighten(by: 0.12)
@@ -164,6 +184,13 @@ enum TabBarColors {
     static func hoveredTabBackground(for appearance: BonsplitConfiguration.Appearance) -> Color {
         guard let custom = tabBarBackgroundColor(for: appearance) else {
             return hoveredTabBackground
+        }
+        if appearance.usesSharedBackdrop {
+            let semanticBackground = semanticTabBarBackgroundColor(for: appearance) ?? custom
+            let overlayColor = semanticBackground.isBonsplitLightColor
+                ? NSColor.black.withAlphaComponent(0.055)
+                : NSColor.white.withAlphaComponent(0.075)
+            return Color(nsColor: overlayColor)
         }
         let adjusted = custom.isBonsplitLightColor
             ? custom.bonsplitDarken(by: 0.03)
