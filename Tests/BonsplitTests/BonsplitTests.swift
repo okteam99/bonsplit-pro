@@ -403,6 +403,16 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertEqual(layout.fullSplitButtonLaneWidth, 160)
         XCTAssertEqual(layout.trailingTabContentInset, 160)
+    }
+
+    func testTabBarLayoutDoesNotHardClipSelectedChromeAtSplitButtonLane() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
         let indicatorFrame = layout.selectedIndicatorFrame(
             selectedTabFrame: CGRect(x: 0, y: 0, width: 240, height: 28),
             totalWidth: 240
@@ -410,7 +420,7 @@ final class BonsplitTests: XCTestCase {
         XCTAssertNotNil(indicatorFrame)
         XCTAssertEqual(
             indicatorFrame?.maxX ?? 0,
-            79,
+            239,
             accuracy: 0.001
         )
     }
@@ -1530,6 +1540,17 @@ final class BonsplitTests: XCTestCase {
         XCTAssertLessThan(delta, 0.08)
     }
 
+    @MainActor
+    func testSelectedTabIndicatorFadesIntoSplitButtonLane() {
+        guard let brightnesses = renderedSelectedIndicatorFadeBrightnesses() else {
+            XCTFail("Expected rendered selected indicator fade colors")
+            return
+        }
+
+        XCTAssertGreaterThan(brightnesses.leading, 0.15)
+        XCTAssertLessThan(brightnesses.trailing, brightnesses.leading - 0.08)
+    }
+
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
         var segments = TabBarStyling.separatorSegments(totalWidth: 100, gap: -20...40)
         XCTAssertEqual(segments.left, 0, accuracy: 0.0001)
@@ -2224,6 +2245,56 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    private func renderedSelectedIndicatorFadeBrightnesses() -> (leading: CGFloat, trailing: CGFloat)? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let splitButtonLaneWidth = TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        let fadeWidth = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect.default.contentFadeWidth
+        let size = NSSize(width: 240, height: 28)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#000000",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let leading = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX - fadeWidth + 4, y: 0)
+            )?.usingColorSpace(.sRGB),
+                  let trailing = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: laneStartX - 4, y: 0)
+                  )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+
+            return (
+                leading: brightness(of: leading),
+                trailing: brightness(of: trailing)
+            )
+        }
+    }
+
+    @MainActor
     private func renderedSelectedTabLeftSeparatorAlphas() -> (top: CGFloat, bottom: CGFloat)? {
         let appearance = BonsplitConfiguration.Appearance(
             chromeColors: .init(
@@ -2357,6 +2428,10 @@ final class BonsplitTests: XCTestCase {
             }
         }
         return maximum
+    }
+
+    private func brightness(of color: NSColor) -> CGFloat {
+        max(color.redComponent, color.greenComponent, color.blueComponent)
     }
 
     @MainActor

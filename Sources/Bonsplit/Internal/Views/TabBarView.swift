@@ -326,10 +326,6 @@ struct TabBarLayout: Equatable {
         max(minimumSplitButtonLaneWidth, measuredSplitButtonLaneWidth)
     }
 
-    var visibleSplitButtonLaneWidth: CGFloat {
-        splitButtonLaneVisible ? fullSplitButtonLaneWidth : 0
-    }
-
     var trailingTabContentInset: CGFloat {
         reservesSplitButtonLane ? fullSplitButtonLaneWidth : 0
     }
@@ -344,9 +340,8 @@ struct TabBarLayout: Equatable {
     ) -> ClosedRange<CGFloat>? {
         guard let selectedTabFrame, totalWidth > 0 else { return nil }
 
-        let visibleContentMaxX = max(0, totalWidth - visibleSplitButtonLaneWidth)
-        let minX = min(max(selectedTabFrame.minX, 0), visibleContentMaxX)
-        let maxX = min(max(selectedTabFrame.maxX, 0), visibleContentMaxX)
+        let minX = min(max(selectedTabFrame.minX, 0), totalWidth)
+        let maxX = min(max(selectedTabFrame.maxX, 0), totalWidth)
         guard maxX > minX else { return nil }
         return minX...maxX
     }
@@ -689,7 +684,7 @@ struct TabBarView: View {
                 .frame(height: tabBarHeight)
                 .mask(combinedMask)
                 // Split buttons sit on top of the tab strip. Their backing surface is
-                // painted by `tabBarBackground` so translucent colors are composited once,
+                // painted by `tabBarSurface` so translucent colors are composited once,
                 // while `combinedMask` fades overflowing tab content out below them.
                 .overlay(alignment: .trailing) {
                     if shouldRenderSplitButtons {
@@ -707,7 +702,8 @@ struct TabBarView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: tabBarHeight)
         .coordinateSpace(name: "tabBar")
-        .background(tabBarBackground)
+        .background(tabBarSurface)
+        .overlay(maskedTabBarChrome)
         .background(TabBarDragAndHoverView(
             isMinimalMode: isMinimalMode,
             onDoubleClick: {
@@ -1274,31 +1270,10 @@ struct TabBarView: View {
         .frame(height: tabBarHeight)
     }
 
-    // MARK: - Fade Overlays
-
-    /// Mask that fades scroll content at the edges instead of overlaying
-    /// a colored gradient. The mask uses black (visible) → clear (hidden),
-    /// so the tab bar background shows through naturally with no compositing.
-    @ViewBuilder
-    private var fadeOverlays: some View {
-        let fadeWidth: CGFloat = 24
-        HStack(spacing: 0) {
-            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollLeft ? fadeWidth : 0, height: tabBarHeight)
-
-            Rectangle().fill(Color.black)
-                .frame(height: tabBarHeight)
-
-            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: canScrollRight ? fadeWidth : 0, height: tabBarHeight)
-        }
-        .frame(height: tabBarHeight)
-    }
-
-    // MARK: - Background
+    // MARK: - Chrome
 
     @ViewBuilder
-    private var tabBarBackground: some View {
+    private var tabBarSurface: some View {
         let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
         let barColor = appearance.usesSharedBackdrop || isFocused
             ? baseBarColor
@@ -1339,17 +1314,26 @@ struct TabBarView: View {
             }
         }
         .frame(height: tabBarHeight)
-        .overlay {
-            GeometryReader { geometry in
-                // Bar-edge chrome stays in tab-bar coordinates so item content
-                // offsets and padding cannot move it.
-                ZStack(alignment: .topLeading) {
-                    selectedTabIndicator(totalWidth: geometry.size.width)
-                    tabBarBottomSeparator(totalWidth: geometry.size.width)
-                }
-            }
-            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var maskedTabBarChrome: some View {
+        GeometryReader { geometry in
+            tabBarChrome(totalWidth: geometry.size.width)
+                .mask(combinedMask)
         }
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func tabBarChrome(totalWidth: CGFloat) -> some View {
+        // Bar-edge chrome uses the same mask as scroll content, so selected
+        // indicators, separators, and tab titles fade together under controls.
+        ZStack(alignment: .topLeading) {
+            selectedTabIndicator(totalWidth: totalWidth)
+            tabBarBottomSeparator(totalWidth: totalWidth)
+        }
+        .frame(height: tabBarHeight)
     }
 
     @ViewBuilder
