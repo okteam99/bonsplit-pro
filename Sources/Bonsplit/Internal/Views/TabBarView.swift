@@ -422,6 +422,7 @@ struct TabBarChromeSnapshot {
     let masksTabContentUnderActionLane: Bool
     let contentFadeWidth: CGFloat
     let contentOcclusionWidth: CGFloat
+    let actionLaneSeparatorFadeWidth: CGFloat
     let backdropFadeWidth: CGFloat
     let backdropSolidWidth: CGFloat
     let backdropFadeRampStartFraction: CGFloat
@@ -434,10 +435,6 @@ struct TabBarChromeSnapshot {
 
     var backdropVisibleFadeWidth: CGFloat {
         backdropFadeWidth * (1 - backdropFadeRampStartFraction)
-    }
-
-    var actionLaneSeparatorFadeWidth: CGFloat {
-        masksTabContentUnderActionLane ? contentFadeWidth : backdropVisibleFadeWidth
     }
 
     var actionLaneSeparatorSolidWidth: CGFloat {
@@ -498,6 +495,13 @@ struct TabBarChromeSnapshot {
             contentFadeWidth: contentFadeWidth
         )
         self.backdropFadeRampStartFraction = min(max(0, effect.fadeRampStartFraction), 0.95)
+        let defaultSeparatorFadeWidth = masksTabContentUnderActionLane
+            ? contentFadeWidth
+            : self.backdropFadeWidth * (1 - self.backdropFadeRampStartFraction)
+        self.actionLaneSeparatorFadeWidth = min(
+            defaultSeparatorFadeWidth,
+            effect.separatorFadeWidth ?? defaultSeparatorFadeWidth
+        )
         self.backdropLeadingColor = colors.leading
         self.backdropTrailingColor = colors.trailing
     }
@@ -917,7 +921,14 @@ struct TabBarView: View {
         .frame(height: tabBarHeight)
         .coordinateSpace(name: "tabBar")
         .background(tabBarSurface)
-        .overlay(maskedTabBarChrome)
+        .overlay(maskedSelectedTabIndicatorChrome)
+        .overlay(alignment: .trailing) {
+            splitButtonBackdropChrome
+                .opacity(shouldShowSplitButtons ? 1 : 0)
+                .allowsHitTesting(false)
+                .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
+        }
+        .overlay(maskedTabBarBottomSeparatorChrome)
         .overlay(alignment: .trailing) {
             splitButtonChrome
         }
@@ -1232,16 +1243,10 @@ struct TabBarView: View {
     @ViewBuilder
     private var splitButtonChrome: some View {
         if shouldRenderSplitButtons {
-            ZStack(alignment: .trailing) {
-                splitButtonBackdropChrome
-                    .opacity(shouldShowSplitButtons ? 1 : 0)
-                    .allowsHitTesting(false)
-
-                splitButtons
-                    .saturation(tabBarSaturation)
-                    .opacity(shouldShowSplitButtons ? 1 : 0)
-                    .allowsHitTesting(shouldShowSplitButtons)
-            }
+            splitButtons
+                .saturation(tabBarSaturation)
+                .opacity(shouldShowSplitButtons ? 1 : 0)
+                .allowsHitTesting(shouldShowSplitButtons)
             .frame(height: tabBarHeight, alignment: .trailing)
             .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
         }
@@ -1540,23 +1545,22 @@ struct TabBarView: View {
     }
 
     @ViewBuilder
-    private var maskedTabBarChrome: some View {
+    private var maskedSelectedTabIndicatorChrome: some View {
         GeometryReader { geometry in
-            tabBarChrome(totalWidth: geometry.size.width)
+            selectedTabIndicator(totalWidth: geometry.size.width)
+                .frame(width: geometry.size.width, height: tabBarHeight, alignment: .topLeading)
                 .mask(combinedMask)
         }
         .allowsHitTesting(false)
     }
 
     @ViewBuilder
-    private func tabBarChrome(totalWidth: CGFloat) -> some View {
-        // Bar-edge chrome uses the same mask as scroll content, so selected
-        // indicators, separators, and tab titles fade together under controls.
-        ZStack(alignment: .topLeading) {
-            selectedTabIndicator(totalWidth: totalWidth)
-            tabBarBottomSeparator(totalWidth: totalWidth)
+    private var maskedTabBarBottomSeparatorChrome: some View {
+        GeometryReader { geometry in
+            tabBarBottomSeparator(totalWidth: geometry.size.width)
+                .mask(combinedMask)
         }
-        .frame(height: tabBarHeight)
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder

@@ -881,13 +881,16 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(effect.fadeWidth, 80)
         XCTAssertEqual(effect.contentFadeWidth, 42)
         XCTAssertEqual(effect.solidWidth, 32)
+        XCTAssertNil(effect.separatorFadeWidth)
         XCTAssertEqual(effect.fadeRampStartFraction, 0.58)
         XCTAssertEqual(effect.contentOcclusionFraction, 0.25)
 
         let clamped = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            separatorFadeWidth: -4,
             fadeRampStartFraction: 1.4,
             contentOcclusionFraction: 2.2
         )
+        XCTAssertEqual(clamped.separatorFadeWidth, 0)
         XCTAssertEqual(clamped.fadeRampStartFraction, 0.95)
         XCTAssertEqual(clamped.contentOcclusionFraction, 1.0)
     }
@@ -1800,6 +1803,35 @@ final class BonsplitTests: XCTestCase {
             snapshot.contentFadeWidth + snapshot.actionLaneWidth,
             accuracy: 0.0001
         )
+    }
+
+    func testSharedBackdropActionLaneSeparatorCanBeNarrowerThanContentFade() {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let layout = TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        )
+        let appearance = sharedBackdropManyActionAppearance(
+            tabBarHeight: size.height,
+            buttonCount: buttonCount,
+            separatorFadeWidth: 12
+        )
+        let snapshot = TabBarChromeSnapshot(
+            appearance: appearance,
+            layout: layout,
+            isFocused: true,
+            shouldShowSplitButtons: true,
+            fadeColorStyle: 0
+        )
+
+        XCTAssertEqual(snapshot.contentFadeWidth, 28.875, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, 12, accuracy: 0.0001)
+        XCTAssertLessThan(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth)
     }
 
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
@@ -2781,7 +2813,8 @@ final class BonsplitTests: XCTestCase {
         tabBarHeight: CGFloat,
         buttonCount: Int,
         borderHex: String = "#66666680",
-        tabMaxWidth: CGFloat = 220
+        tabMaxWidth: CGFloat = 220,
+        separatorFadeWidth: CGFloat? = nil
     ) -> BonsplitConfiguration.Appearance {
         BonsplitConfiguration.Appearance(
             tabBarHeight: tabBarHeight,
@@ -2792,6 +2825,7 @@ final class BonsplitTests: XCTestCase {
                 fadeWidth: 99.75,
                 contentFadeWidth: 28.875,
                 solidWidth: 23.875,
+                separatorFadeWidth: separatorFadeWidth,
                 fadeRampStartFraction: 0.60,
                 leadingOpacity: 0,
                 trailingOpacity: 0.8625,
