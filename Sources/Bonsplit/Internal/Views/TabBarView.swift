@@ -430,6 +430,10 @@ struct TabBarChromeSnapshot {
         paintsActionLaneSurface || masksTabContentUnderActionLane
     }
 
+    var backdropVisibleFadeWidth: CGFloat {
+        backdropFadeWidth * (1 - backdropFadeRampStartFraction)
+    }
+
     init(
         appearance: BonsplitConfiguration.Appearance,
         layout: TabBarLayout,
@@ -1247,7 +1251,7 @@ struct TabBarView: View {
     @ViewBuilder
     private func splitButtonBackdropFadeSegment(snapshot: TabBarChromeSnapshot) -> some View {
         let rampStart = snapshot.backdropFadeRampStartFraction
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomTrailing) {
             if snapshot.paintsActionLaneSurface {
                 LinearGradient(
                     stops: [
@@ -1262,15 +1266,14 @@ struct TabBarView: View {
             if snapshot.drawsActionLaneSeparator {
                 let separator = TabBarColors.separator(for: appearance)
                 LinearGradient(
-                    stops: [
-                        .init(color: separator.opacity(0), location: 0),
-                        .init(color: separator.opacity(0), location: rampStart),
-                        .init(color: separator, location: 1)
+                    colors: [
+                        separator.opacity(0),
+                        separator
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
-                .frame(height: 1)
+                .frame(width: snapshot.backdropVisibleFadeWidth, height: 1)
             }
         }
         .frame(width: snapshot.backdropFadeWidth, height: tabBarHeight, alignment: .bottom)
