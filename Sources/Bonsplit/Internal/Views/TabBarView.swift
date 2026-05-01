@@ -369,6 +369,10 @@ struct TabBarLayout: Equatable {
         min(fullSplitButtonLaneWidth, maximumSplitButtonLaneWidth)
     }
 
+    var splitButtonLaneOverflowsViewport: Bool {
+        fullSplitButtonLaneWidth > visibleSplitButtonLaneWidth + 1
+    }
+
     var trailingTabContentInset: CGFloat {
         reservesSplitButtonLane ? visibleSplitButtonLaneWidth : 0
     }
@@ -435,10 +439,13 @@ struct TabBarActionLaneGeometry: Equatable {
             )
             : 0
         self.backgroundFadeWidth = max(0, effect.fadeWidth)
+        let solidSurfaceWidthAdjustment = layout.splitButtonLaneOverflowsViewport
+            ? max(0, effect.solidSurfaceWidthAdjustment)
+            : effect.solidSurfaceWidthAdjustment
         self.backgroundSolidWidth = TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
             effectSolidWidth: effect.solidWidth,
             visibleLaneWidth: layout.visibleSplitButtonLaneWidth,
-            solidSurfaceWidthAdjustment: effect.solidSurfaceWidthAdjustment
+            solidSurfaceWidthAdjustment: solidSurfaceWidthAdjustment
         )
         let rampStart = min(max(0, effect.fadeRampStartFraction), 0.95)
         self.backgroundFadeRampStartFraction = rampStart

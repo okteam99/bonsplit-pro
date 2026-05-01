@@ -419,6 +419,7 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(layout.maximumSplitButtonLaneWidth, 60)
         XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 60)
         XCTAssertEqual(layout.trailingTabContentInset, 60)
+        XCTAssertTrue(layout.splitButtonLaneOverflowsViewport)
     }
 
     func testTabBarLayoutKeepsMeasuredLaneWhenItFitsQuarterOfAvailableWidth() {
@@ -435,6 +436,53 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(layout.maximumSplitButtonLaneWidth, 200)
         XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 160)
         XCTAssertEqual(layout.trailingTabContentInset, 160)
+        XCTAssertFalse(layout.splitButtonLaneOverflowsViewport)
+    }
+
+    func testActionLaneSolidSurfaceCoversVisibleViewportWhenButtonsOverflow() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            availableWidth: 240,
+            splitButtonCount: 12,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 400
+        )
+        let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            solidWidth: 23.875,
+            solidSurfaceWidthAdjustment: -53
+        )
+        let geometry = TabBarActionLaneGeometry(
+            layout: layout,
+            effect: effect,
+            masksTabContent: true
+        )
+
+        XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 60, accuracy: 0.0001)
+        XCTAssertEqual(geometry.backgroundSolidWidth, 60, accuracy: 0.0001)
+    }
+
+    func testActionLaneSolidSurfaceAllowsTrimWhenButtonsDoNotOverflow() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            availableWidth: 800,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+        let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            solidWidth: 23.875,
+            solidSurfaceWidthAdjustment: -53
+        )
+        let geometry = TabBarActionLaneGeometry(
+            layout: layout,
+            effect: effect,
+            masksTabContent: true
+        )
+
+        XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 160, accuracy: 0.0001)
+        XCTAssertEqual(geometry.backgroundSolidWidth, 107, accuracy: 0.0001)
     }
 
     func testSplitButtonBackdropSolidSurfaceCoversVisibleActionLane() {
