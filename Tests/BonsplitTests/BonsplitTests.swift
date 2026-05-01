@@ -372,6 +372,245 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
+    func testTabBarLayoutKeepsDefaultSplitButtonLaneWidthAsMinimum() {
+        let compactMeasuredWidth =
+            TabBarStyling.splitButtonsLeadingPadding
+            + TabBarStyling.splitButtonsTrailingPadding
+            + (4 * CGFloat(14))
+            + (3 * TabBarStyling.splitButtonsSpacing)
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: compactMeasuredWidth
+        )
+
+        XCTAssertEqual(
+            layout.fullSplitButtonLaneWidth,
+            TabBarStyling.splitButtonsBackdropWidth(buttonCount: 4)
+        )
+    }
+
+    func testTabBarLayoutExpandsForMeasuredSplitButtonLaneWidth() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+
+        XCTAssertEqual(layout.fullSplitButtonLaneWidth, 160)
+        XCTAssertEqual(layout.trailingTabContentInset, 160)
+    }
+
+    func testTabBarLayoutCapsSplitButtonLaneToQuarterOfAvailableWidth() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            availableWidth: 240,
+            splitButtonCount: 12,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 400
+        )
+
+        XCTAssertEqual(layout.fullSplitButtonLaneWidth, 400)
+        XCTAssertEqual(layout.maximumSplitButtonLaneWidth, 60)
+        XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 60)
+        XCTAssertEqual(layout.trailingTabContentInset, 60)
+        XCTAssertTrue(layout.splitButtonLaneOverflowsViewport)
+    }
+
+    func testTabBarLayoutKeepsMeasuredLaneWhenItFitsQuarterOfAvailableWidth() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            availableWidth: 800,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+
+        XCTAssertEqual(layout.fullSplitButtonLaneWidth, 160)
+        XCTAssertEqual(layout.maximumSplitButtonLaneWidth, 200)
+        XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 160)
+        XCTAssertEqual(layout.trailingTabContentInset, 160)
+        XCTAssertFalse(layout.splitButtonLaneOverflowsViewport)
+    }
+
+    func testActionLaneSolidSurfaceCoversVisibleViewportWhenButtonsOverflow() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            availableWidth: 240,
+            splitButtonCount: 12,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 400
+        )
+        let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            solidWidth: 23.875,
+            solidSurfaceWidthAdjustment: -53,
+            contentOcclusionFraction: 0.6875
+        )
+        let geometry = TabBarActionLaneGeometry(
+            layout: layout,
+            effect: effect,
+            masksTabContent: true
+        )
+
+        XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 60, accuracy: 0.0001)
+        XCTAssertEqual(geometry.backgroundSolidWidth, 60, accuracy: 0.0001)
+        XCTAssertEqual(geometry.contentOcclusionWidth, 60, accuracy: 0.0001)
+    }
+
+    func testActionLaneSolidSurfaceAllowsTrimWhenButtonsDoNotOverflow() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            availableWidth: 800,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+        let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            solidWidth: 23.875,
+            solidSurfaceWidthAdjustment: -53,
+            contentOcclusionFraction: 0.6875
+        )
+        let geometry = TabBarActionLaneGeometry(
+            layout: layout,
+            effect: effect,
+            masksTabContent: true
+        )
+
+        XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 160, accuracy: 0.0001)
+        XCTAssertEqual(geometry.backgroundSolidWidth, 107, accuracy: 0.0001)
+        XCTAssertEqual(geometry.contentOcclusionWidth, 110, accuracy: 0.0001)
+    }
+
+    func testSplitButtonBackdropSolidSurfaceCoversVisibleActionLane() {
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 90,
+                solidSurfaceWidthAdjustment: 0
+            ),
+            90
+        )
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 96,
+                visibleLaneWidth: 72,
+                solidSurfaceWidthAdjustment: 0
+            ),
+            96
+        )
+    }
+
+    func testSplitButtonContentOcclusionFractionDoesNotChangeSolidSurface() {
+        let occlusion = TabBarStyling.splitButtonContentOcclusionWidth(
+            visibleLaneWidth: 200,
+            contentOcclusionFraction: 0.25
+        )
+
+        XCTAssertEqual(occlusion, 50)
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 200,
+                solidSurfaceWidthAdjustment: 0
+            ),
+            200
+        )
+    }
+
+    func testSplitButtonBackdropSolidSurfaceWidthCanBeAdjusted() {
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 90,
+                solidSurfaceWidthAdjustment: 12
+            ),
+            102
+        )
+        XCTAssertEqual(
+            TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+                effectSolidWidth: 2,
+                visibleLaneWidth: 90,
+                solidSurfaceWidthAdjustment: -12
+            ),
+            78
+        )
+    }
+
+    func testSplitButtonScrollAffordancesTrackHiddenButtons() {
+        var affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 0,
+            contentWidth: 320,
+            viewportWidth: 60
+        )
+        XCTAssertFalse(affordances.left)
+        XCTAssertTrue(affordances.right)
+
+        affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 120,
+            contentWidth: 320,
+            viewportWidth: 60
+        )
+        XCTAssertTrue(affordances.left)
+        XCTAssertTrue(affordances.right)
+
+        affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 260,
+            contentWidth: 320,
+            viewportWidth: 60
+        )
+        XCTAssertTrue(affordances.left)
+        XCTAssertFalse(affordances.right)
+
+        affordances = TabBarStyling.splitButtonScrollAffordances(
+            scrollOffset: 0,
+            contentWidth: 60,
+            viewportWidth: 60
+        )
+        XCTAssertFalse(affordances.left)
+        XCTAssertFalse(affordances.right)
+    }
+
+    func testTabBarLayoutDoesNotHardClipSelectedChromeAtSplitButtonLane() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 4,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+        let indicatorFrame = layout.selectedIndicatorFrame(
+            selectedTabFrame: CGRect(x: 0, y: 0, width: 240, height: 28),
+            totalWidth: 240
+        )
+        XCTAssertNotNil(indicatorFrame)
+        XCTAssertEqual(
+            indicatorFrame?.maxX ?? 0,
+            239,
+            accuracy: 0.001
+        )
+    }
+
+    func testTabBarLayoutIgnoresMeasuredSplitButtonLaneWidthWithoutButtons() {
+        let layout = TabBarLayout(
+            tabBarHeight: 28,
+            splitButtonCount: 0,
+            splitButtonLaneVisible: false,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: 160
+        )
+
+        XCTAssertEqual(layout.fullSplitButtonLaneWidth, 0)
+        XCTAssertEqual(layout.trailingTabContentInset, 0)
+    }
+
     func testTabBarKeepsNonOverflowingTabsLeadingAligned() {
         let tabId = UUID()
 
@@ -703,6 +942,7 @@ final class BonsplitTests: XCTestCase {
             fadeWidth: 80,
             contentFadeWidth: 42,
             solidWidth: 32,
+            solidSurfaceWidthAdjustment: 7,
             fadeRampStartFraction: 0.58,
             contentOcclusionFraction: 0.25
         )
@@ -710,13 +950,19 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(effect.fadeWidth, 80)
         XCTAssertEqual(effect.contentFadeWidth, 42)
         XCTAssertEqual(effect.solidWidth, 32)
+        XCTAssertEqual(effect.solidSurfaceWidthAdjustment, 7)
+        XCTAssertNil(effect.separatorFadeWidth)
         XCTAssertEqual(effect.fadeRampStartFraction, 0.58)
         XCTAssertEqual(effect.contentOcclusionFraction, 0.25)
 
         let clamped = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
+            solidSurfaceWidthAdjustment: .infinity,
+            separatorFadeWidth: -4,
             fadeRampStartFraction: 1.4,
             contentOcclusionFraction: 2.2
         )
+        XCTAssertEqual(clamped.solidSurfaceWidthAdjustment, 0)
+        XCTAssertEqual(clamped.separatorFadeWidth, 0)
         XCTAssertEqual(clamped.fadeRampStartFraction, 0.95)
         XCTAssertEqual(clamped.contentOcclusionFraction, 1.0)
     }
@@ -1405,6 +1651,133 @@ final class BonsplitTests: XCTestCase {
         XCTAssertFalse(controller.internalController.tabShortcutHintsEnabled)
     }
 
+    func testLegacyFileDropsOnlyValidateCenterZone() {
+        XCTAssertTrue(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .center,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            )
+        )
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .left,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            )
+        )
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .center,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: false
+            )
+        )
+        XCTAssertTrue(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .right,
+                hasExternalFileDropHandler: true,
+                hasLegacyFileDropHandler: false
+            )
+        )
+    }
+
+    func testLegacyFileDropUpdatedRejectsEdgeZones() {
+        XCTAssertEqual(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .center,
+                isFileDropOnly: true,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            ),
+            .center
+        )
+        XCTAssertNil(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .left,
+                isFileDropOnly: true,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            )
+        )
+        XCTAssertEqual(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .left,
+                isFileDropOnly: true,
+                hasExternalFileDropHandler: true,
+                hasLegacyFileDropHandler: false
+            ),
+            .left
+        )
+        XCTAssertEqual(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .left,
+                isFileDropOnly: false,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: false
+            ),
+            .left
+        )
+    }
+
+    func testFileURLPasteboardReaderReturnsFileURLs() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bonsplit-file-drop-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("sample.txt")
+        try "sample".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("bonsplit.file-drop.\(UUID().uuidString)"))
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
+
+        XCTAssertEqual(UnifiedPaneDropDelegate.fileURLs(from: pasteboard), [fileURL])
+    }
+
+    func testFileDropValidationRequiresReadablePasteboardURLs() throws {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("bonsplit.file-drop.empty.\(UUID().uuidString)"))
+        pasteboard.clearContents()
+
+        XCTAssertFalse(UnifiedPaneDropDelegate.hasReadableFileURLs(from: pasteboard))
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bonsplit-file-drop-readable-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("sample.txt")
+        try "sample".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
+        XCTAssertTrue(UnifiedPaneDropDelegate.hasReadableFileURLs(from: pasteboard))
+    }
+
+    func testFileOnlyDropsDoNotUseStaleLocalTabDragState() {
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.shouldUseLocalTabDrag(
+                hasTabTransfer: false,
+                hasFileURL: true,
+                hasLocalTabDrag: true
+            )
+        )
+        XCTAssertTrue(
+            UnifiedPaneDropDelegate.shouldUseLocalTabDrag(
+                hasTabTransfer: true,
+                hasFileURL: false,
+                hasLocalTabDrag: true
+            )
+        )
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.shouldUseLocalTabDrag(
+                hasTabTransfer: true,
+                hasFileURL: false,
+                hasLocalTabDrag: false
+            )
+        )
+    }
+
     func testSelectedTabNeverShowsHoverBackground() {
         XCTAssertFalse(
             TabItemStyling.shouldShowHoverBackground(isHovered: true, isSelected: true)
@@ -1452,6 +1825,216 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertGreaterThan(focusedSaturation, 0.4)
         XCTAssertLessThan(unfocusedSaturation, 0.1)
+    }
+
+    @MainActor
+    func testSplitButtonLaneDoesNotExposeSelectedTabIndicator() {
+        guard let saturation = renderedSplitButtonLaneTopSaturation() else {
+            XCTFail("Expected rendered split button lane colors")
+            return
+        }
+
+        XCTAssertLessThan(saturation, 0.2)
+    }
+
+    @MainActor
+    func testSplitButtonBackdropFadePaintsFullTabBarHeight() {
+        guard let delta = renderedSplitButtonBackdropFadeVerticalColorDelta() else {
+            XCTFail("Expected rendered split button backdrop fade colors")
+            return
+        }
+
+        XCTAssertLessThan(delta, 0.08)
+    }
+
+    @MainActor
+    func testSplitButtonBackdropSolidSurfaceCoversVisibleLane() {
+        guard let brightness = renderedSplitButtonLaneSolidBackdropBrightness() else {
+            XCTFail("Expected rendered split button lane backdrop color")
+            return
+        }
+
+        XCTAssertGreaterThan(brightness, 0.5)
+    }
+
+    @MainActor
+    func testSplitButtonBackdropDoesNotPaintSolidSurfaceAtTabContentFadeStart() {
+        guard let brightness = renderedSplitButtonContentFadeStartBackdropBrightness() else {
+            XCTFail("Expected rendered split button content fade backdrop color")
+            return
+        }
+
+        XCTAssertLessThan(brightness, 0.1)
+    }
+
+    @MainActor
+    func testSplitButtonBackdropOccludesTabChromeAtContentFadeStart() {
+        guard let saturation = renderedSplitButtonContentFadeStartSaturation() else {
+            XCTFail("Expected rendered split button content fade colors")
+            return
+        }
+
+        XCTAssertLessThan(saturation, 0.2)
+    }
+
+    @MainActor
+    func testSelectedTabIndicatorDoesNotBleedUnderSplitButtonBackdrop() {
+        guard let brightnesses = renderedSelectedIndicatorBackdropBrightnesses() else {
+            XCTFail("Expected rendered selected indicator backdrop colors")
+            return
+        }
+
+        XCTAssertLessThan(brightnesses.leading, 0.08)
+        XCTAssertLessThan(brightnesses.trailing, 0.08)
+    }
+
+    @MainActor
+    func testSharedBackdropTransparentActionLaneDoesNotPaintSyntheticSurface() {
+        let appearance = BonsplitConfiguration.Appearance(
+            chromeColors: .init(
+                backgroundHex: "#272822B8",
+                tabBarBackgroundHex: "#00000000",
+                splitButtonBackdropHex: "#00000000",
+                paneBackgroundHex: "#00000000"
+            ),
+            usesSharedBackdrop: true
+        )
+
+        XCTAssertFalse(TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance))
+    }
+
+    @MainActor
+    func testSharedBackdropManySplitButtonsMaskTabContentWithoutSyntheticSurface() {
+        guard let alpha = renderedSharedBackdropActionLaneSurfaceAlpha() else {
+            XCTFail("Expected rendered shared backdrop action lane color")
+            return
+        }
+
+        XCTAssertLessThan(alpha, 0.05)
+    }
+
+    @MainActor
+    func testOverflowingSplitButtonsClipToActionLane() {
+        guard let brightness = renderedEscapedSplitButtonBrightnessOutsideActionLane() else {
+            XCTFail("Expected rendered split button overflow colors")
+            return
+        }
+
+        XCTAssertLessThan(brightness, 0.30)
+    }
+
+    @MainActor
+    func testSharedBackdropActionLaneBottomSeparatorCoversSolidAreaAndFadesOut() {
+        guard let alphas = renderedSharedBackdropActionLaneBottomSeparatorAlphas() else {
+            XCTFail("Expected rendered shared backdrop action lane separator colors")
+            return
+        }
+
+        XCTAssertGreaterThan(alphas.solid, 0.25)
+        XCTAssertLessThan(alphas.fadeStart, alphas.solid * 0.25)
+        XCTAssertLessThan(alphas.beforeRamp, alphas.solid * 0.25)
+        XCTAssertGreaterThan(alphas.afterRamp, alphas.solid * 0.25)
+        XCTAssertGreaterThan(alphas.fadeEnd, alphas.solid * 0.55)
+        XCTAssertEqual(alphas.fadeEnd, alphas.solidStart, accuracy: 0.15)
+    }
+
+    func testSharedBackdropActionLaneSeparatorMatchesBackdropGradientGeometry() {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let layout = TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        )
+        let snapshot = TabBarChromeSnapshot(
+            appearance: sharedBackdropManyActionAppearance(
+                tabBarHeight: size.height,
+                buttonCount: buttonCount
+            ),
+            layout: layout,
+            isFocused: true,
+            shouldShowSplitButtons: true,
+            fadeColorStyle: 0
+        )
+
+        XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, snapshot.backdropFadeWidth, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.actionLaneSeparatorSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.backdropSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
+        XCTAssertEqual(
+            snapshot.actionLaneSeparatorFadeWidth + snapshot.actionLaneSeparatorSolidWidth,
+            snapshot.backdropFadeWidth + snapshot.actionLaneWidth,
+            accuracy: 0.0001
+        )
+    }
+
+    func testSharedBackdropActionLaneSeparatorCanBeNarrowerThanContentFade() {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let layout = TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        )
+        let appearance = sharedBackdropManyActionAppearance(
+            tabBarHeight: size.height,
+            buttonCount: buttonCount,
+            separatorFadeWidth: 12
+        )
+        let snapshot = TabBarChromeSnapshot(
+            appearance: appearance,
+            layout: layout,
+            isFocused: true,
+            shouldShowSplitButtons: true,
+            fadeColorStyle: 0
+        )
+
+        XCTAssertEqual(snapshot.contentFadeWidth, 28.875, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, 12, accuracy: 0.0001)
+        XCTAssertLessThan(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth)
+    }
+
+    func testActionLaneFallbackSeparatorClipsToSelectedSeparatorGap() {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let layout = TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        )
+        let snapshot = TabBarChromeSnapshot(
+            appearance: sharedBackdropManyActionAppearance(
+                tabBarHeight: size.height,
+                buttonCount: buttonCount,
+                separatorFadeWidth: 12
+            ),
+            layout: layout,
+            isFocused: true,
+            shouldShowSplitButtons: true,
+            fadeColorStyle: 0
+        )
+        let geometry = snapshot.actionLaneGeometry
+        let mask = geometry.fallbackSeparatorMaskFrame(
+            totalWidth: size.width,
+            height: size.height,
+            selectedSeparatorGap: 300...340
+        )
+
+        XCTAssertEqual(mask?.minX ?? -1, 300, accuracy: 0.0001)
+        XCTAssertEqual(mask?.maxX ?? -1, 340, accuracy: 0.0001)
+        XCTAssertNil(geometry.fallbackSeparatorMaskFrame(
+            totalWidth: size.width,
+            height: size.height,
+            selectedSeparatorGap: 0...40
+        ))
     }
 
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
@@ -2068,6 +2651,483 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    private func renderedSplitButtonLaneTopSaturation() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#111111",
+                tabBarBackgroundHex: "#181818",
+                splitButtonBackdropHex: "#242424",
+                borderHex: "#666666"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            let sampleRect = NSRect(x: laneStartX + 4, y: 0, width: 40, height: 4)
+            return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedSplitButtonBackdropFadeVerticalColorDelta() -> CGFloat? {
+        let size = NSSize(width: 360, height: 28)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#FFFFFF",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let sampleX = size.width - 124
+            guard let top = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: sampleX, y: 6)
+            )?.usingColorSpace(.sRGB),
+                  let bottom = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: sampleX, y: size.height - 6)
+                  )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+
+            return abs(top.redComponent - bottom.redComponent)
+                + abs(top.greenComponent - bottom.greenComponent)
+                + abs(top.blueComponent - bottom.blueComponent)
+                + abs(top.alphaComponent - bottom.alphaComponent)
+        }
+    }
+
+    @MainActor
+    private func renderedSplitButtonLaneSolidBackdropBrightness() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#FFFFFF",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let color = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX + 2, y: size.height / 2)
+            )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+            return brightness(of: color)
+        }
+    }
+
+    @MainActor
+    private func renderedSplitButtonContentFadeStartBackdropBrightness() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let contentFadeWidth = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect.default.contentFadeWidth
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#FFFFFF",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let color = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX - contentFadeWidth + 2, y: size.height / 2)
+            )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+            return brightness(of: color)
+        }
+    }
+
+    @MainActor
+    private func renderedSplitButtonContentFadeStartSaturation() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let contentFadeWidth = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect.default.contentFadeWidth
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#000000",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            let sampleRect = NSRect(
+                x: laneStartX - contentFadeWidth + 2,
+                y: 0,
+                width: 8,
+                height: 4
+            )
+            return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedSelectedIndicatorBackdropBrightnesses() -> (leading: CGFloat, trailing: CGFloat)? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let fadeWidth = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect.default.contentFadeWidth
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#000000",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let leading = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX - fadeWidth + 4, y: 0)
+            )?.usingColorSpace(.sRGB),
+                  let trailing = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: laneStartX - 4, y: 0)
+                  )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+
+            return (
+                leading: brightness(of: leading),
+                trailing: brightness(of: trailing)
+            )
+        }
+    }
+
+    @MainActor
+    private func renderedSharedBackdropActionLaneSurfaceAlpha() -> CGFloat? {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = sharedBackdropManyActionAppearance(
+            tabBarHeight: size.height,
+            buttonCount: buttonCount
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let leading = TabItem(title: "", icon: nil)
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the full action button lane",
+                    icon: nil
+                )
+                pane.tabs = [leading, selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            guard let color = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: laneStartX + 2, y: 2)
+            )?.usingColorSpace(.sRGB) else {
+                return nil
+            }
+            return color.alphaComponent
+        }
+    }
+
+    @MainActor
+    private func renderedEscapedSplitButtonBrightnessOutsideActionLane() -> CGFloat? {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            tabMaxWidth: 40,
+            splitButtons: manySplitActionButtons(count: buttonCount),
+            splitButtonBackdropEffect: .init(
+                style: .translucentChrome,
+                fadeWidth: 99.75,
+                contentFadeWidth: 28.875,
+                solidWidth: 23.875,
+                fadeRampStartFraction: 0.60,
+                leadingOpacity: 0,
+                trailingOpacity: 0.8625,
+                contentOcclusionFraction: 0.6875,
+                masksTabContent: true
+            ),
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#000000",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            maximumBrightness(
+                in: hostingView,
+                sampleRect: NSRect(
+                    x: 100,
+                    y: 5,
+                    width: size.width - splitButtonLaneWidth - 108,
+                    height: size.height - 10
+                )
+            )
+        }
+    }
+
+    @MainActor
+    private func renderedSharedBackdropActionLaneBottomSeparatorAlphas() -> (
+        fadeStart: CGFloat,
+        beforeRamp: CGFloat,
+        afterRamp: CGFloat,
+        fadeEnd: CGFloat,
+        solidStart: CGFloat,
+        solid: CGFloat
+    )? {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let separatorFadeWidth: CGFloat = 99.75
+        let rampStartFraction: CGFloat = 0.60
+        let contentOcclusionWidth = TabBarStyling.splitButtonContentOcclusionWidth(
+            visibleLaneWidth: splitButtonLaneWidth,
+            contentOcclusionFraction: 0.6875
+        )
+        let solidWidth = max(splitButtonLaneWidth, contentOcclusionWidth)
+        let appearance = sharedBackdropManyActionAppearance(
+            tabBarHeight: size.height,
+            buttonCount: buttonCount,
+            borderHex: "#FFFFFF80",
+            tabMaxWidth: size.width
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let leading = TabItem(title: "", icon: nil)
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the full action button lane",
+                    icon: nil
+                )
+                pane.tabs = [leading, selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let separatorY = size.height - 0.5
+            let fadeStartX = size.width - solidWidth - separatorFadeWidth
+            let rampStartX = fadeStartX + separatorFadeWidth * rampStartFraction
+            let solidStartX = size.width - solidWidth
+            guard let fadeStart = renderedColorInViewCoordinates(
+                in: hostingView,
+                at: NSPoint(x: fadeStartX + 2, y: separatorY)
+            )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let beforeRamp = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: rampStartX - 2, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let afterRamp = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: rampStartX + 16, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let fadeEnd = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: solidStartX - 2, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let solidStart = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: solidStartX + 2, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let solid = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: size.width - 6, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent else {
+                return nil
+            }
+            return (
+                fadeStart: fadeStart,
+                beforeRamp: beforeRamp,
+                afterRamp: afterRamp,
+                fadeEnd: fadeEnd,
+                solidStart: solidStart,
+                solid: solid
+            )
+        }
+    }
+
+    private func sharedBackdropManyActionAppearance(
+        tabBarHeight: CGFloat,
+        buttonCount: Int,
+        borderHex: String = "#66666680",
+        tabMaxWidth: CGFloat = 220,
+        separatorFadeWidth: CGFloat? = nil
+    ) -> BonsplitConfiguration.Appearance {
+        BonsplitConfiguration.Appearance(
+            tabBarHeight: tabBarHeight,
+            tabMaxWidth: tabMaxWidth,
+            splitButtons: manySplitActionButtons(count: buttonCount),
+            splitButtonBackdropEffect: .init(
+                style: .translucentChrome,
+                fadeWidth: 99.75,
+                contentFadeWidth: 28.875,
+                solidWidth: 23.875,
+                separatorFadeWidth: separatorFadeWidth,
+                fadeRampStartFraction: 0.60,
+                leadingOpacity: 0,
+                trailingOpacity: 0.8625,
+                contentOcclusionFraction: 0.6875,
+                masksTabContent: true
+            ),
+            chromeColors: .init(
+                backgroundHex: "#242424B8",
+                tabBarBackgroundHex: "#00000000",
+                splitButtonBackdropHex: "#00000000",
+                paneBackgroundHex: "#00000000",
+                borderHex: borderHex
+            ),
+            usesSharedBackdrop: true
+        )
+    }
+
+    private func manySplitActionButtons(count: Int) -> [BonsplitConfiguration.SplitActionButton] {
+        (0..<count).map { index in
+            BonsplitConfiguration.SplitActionButton(
+                id: "many-action-\(index)",
+                icon: .systemImage("terminal"),
+                tooltip: "Action \(index)",
+                action: .custom("many-action-\(index)")
+            )
+        }
+    }
+
+    private func visibleSplitButtonLaneWidth(size: NSSize, buttonCount: Int) -> CGFloat {
+        TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        ).visibleSplitButtonLaneWidth
+    }
+
+    @MainActor
     private func renderedSelectedTabLeftSeparatorAlphas() -> (top: CGFloat, bottom: CGFloat)? {
         let appearance = BonsplitConfiguration.Appearance(
             chromeColors: .init(
@@ -2118,11 +3178,12 @@ final class BonsplitTests: XCTestCase {
               y < bitmap.pixelsHigh else { return nil }
         return bitmap.colorAt(x: x, y: y)
     }
-
     @MainActor
     private func renderedTabBarValue<T>(
         isFocused: Bool,
         appearance: BonsplitConfiguration.Appearance = .default,
+        showSplitButtons: Bool = false,
+        size: NSSize? = nil,
         configurePane: ((PaneState) -> Void)? = nil,
         extract: (NSView) -> T?
     ) -> T? {
@@ -2136,9 +3197,9 @@ final class BonsplitTests: XCTestCase {
             pane.selectedTabId = tab.id
         }
 
-        let size = NSSize(width: 160, height: TabBarMetrics.barHeight)
+        let size = size ?? NSSize(width: 160, height: TabBarMetrics.barHeight)
         let hostingView = NSHostingView(
-            rootView: TabBarView(pane: pane, isFocused: isFocused, showSplitButtons: false)
+            rootView: TabBarView(pane: pane, isFocused: isFocused, showSplitButtons: showSplitButtons)
                 .environment(controller)
                 .environment(controller.internalController)
         )
@@ -2188,9 +3249,10 @@ final class BonsplitTests: XCTestCase {
                 guard let color = bitmap.colorAt(x: x, y: y),
                       let rgb = color.usingColorSpace(.sRGB),
                       rgb.alphaComponent > 0.05 else { continue }
-                let red = rgb.redComponent
-                let green = rgb.greenComponent
-                let blue = rgb.blueComponent
+                let alpha = min(max(rgb.alphaComponent, 0), 1)
+                let red = rgb.redComponent * alpha
+                let green = rgb.greenComponent * alpha
+                let blue = rgb.blueComponent * alpha
                 let high = max(red, green, blue)
                 guard high > 0.01 else { continue }
                 let low = min(red, green, blue)
@@ -2199,6 +3261,51 @@ final class BonsplitTests: XCTestCase {
             }
         }
         return maximum
+    }
+
+    @MainActor
+    private func maximumBrightness(in view: NSView, sampleRect: NSRect) -> CGFloat? {
+        let integralBounds = view.bounds.integral
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: integralBounds) else { return nil }
+        bitmap.size = integralBounds.size
+        view.cacheDisplay(in: integralBounds, to: bitmap)
+
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1, integralBounds.width)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1, integralBounds.height)
+        let minX = max(0, Int(floor(sampleRect.minX * scaleX)))
+        let maxX = min(bitmap.pixelsWide, Int(ceil(sampleRect.maxX * scaleX)))
+        let minY = max(0, Int(floor(sampleRect.minY * scaleY)))
+        let maxY = min(bitmap.pixelsHigh, Int(ceil(sampleRect.maxY * scaleY)))
+
+        var maximum: CGFloat = 0
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                guard let color = bitmap.colorAt(x: x, y: y),
+                      let rgb = color.usingColorSpace(.sRGB),
+                      rgb.alphaComponent > 0.05 else { continue }
+                let alpha = min(max(rgb.alphaComponent, 0), 1)
+                maximum = max(
+                    maximum,
+                    max(
+                        rgb.redComponent * alpha,
+                        rgb.greenComponent * alpha,
+                        rgb.blueComponent * alpha
+                    )
+                )
+            }
+        }
+        return maximum
+    }
+
+    private func brightness(of color: NSColor) -> CGFloat {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
+        let alpha = min(max(rgb.alphaComponent, 0), 1)
+        guard alpha > 0.01 else { return 0 }
+        return max(
+            rgb.redComponent * alpha,
+            rgb.greenComponent * alpha,
+            rgb.blueComponent * alpha
+        )
     }
 
     @MainActor
@@ -2222,9 +3329,13 @@ final class BonsplitTests: XCTestCase {
                 guard let color = bitmap.colorAt(x: x, y: y),
                       let rgb = color.usingColorSpace(.sRGB),
                       rgb.alphaComponent > 0.05 else { continue }
-                let high = max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                let alpha = min(max(rgb.alphaComponent, 0), 1)
+                let red = rgb.redComponent * alpha
+                let green = rgb.greenComponent * alpha
+                let blue = rgb.blueComponent * alpha
+                let high = max(red, green, blue)
                 guard high > 0.01 else { continue }
-                let low = min(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                let low = min(red, green, blue)
                 if (high - low) / high > 0.4 {
                     hasIndicatorPixel = true
                     break

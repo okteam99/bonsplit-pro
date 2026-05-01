@@ -351,6 +351,8 @@ extension BonsplitConfiguration {
             public var fadeWidth: CGFloat
             public var contentFadeWidth: CGFloat
             public var solidWidth: CGFloat
+            public var solidSurfaceWidthAdjustment: CGFloat
+            public var separatorFadeWidth: CGFloat?
             public var fadeRampStartFraction: CGFloat
             public var leadingOpacity: CGFloat
             public var trailingOpacity: CGFloat
@@ -362,6 +364,8 @@ extension BonsplitConfiguration {
                 fadeWidth: CGFloat = 136,
                 contentFadeWidth: CGFloat = 42,
                 solidWidth: CGFloat = 2,
+                solidSurfaceWidthAdjustment: CGFloat = 0,
+                separatorFadeWidth: CGFloat? = nil,
                 fadeRampStartFraction: CGFloat = 0.80,
                 leadingOpacity: CGFloat = 0,
                 trailingOpacity: CGFloat = 0.80,
@@ -372,6 +376,10 @@ extension BonsplitConfiguration {
                 self.fadeWidth = max(0, fadeWidth)
                 self.contentFadeWidth = max(0, contentFadeWidth)
                 self.solidWidth = max(0, solidWidth)
+                self.solidSurfaceWidthAdjustment = solidSurfaceWidthAdjustment.isFinite
+                    ? solidSurfaceWidthAdjustment
+                    : 0
+                self.separatorFadeWidth = separatorFadeWidth.map { max(0, $0) }
                 self.fadeRampStartFraction = min(max(0, fadeRampStartFraction), 0.95)
                 self.leadingOpacity = min(max(0, leadingOpacity), 1)
                 self.trailingOpacity = min(max(0, trailingOpacity), 1)
