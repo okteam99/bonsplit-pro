@@ -1573,6 +1573,53 @@ final class BonsplitTests: XCTestCase {
         XCTAssertFalse(controller.internalController.tabShortcutHintsEnabled)
     }
 
+    func testLegacyFileDropsOnlyValidateCenterZone() {
+        XCTAssertTrue(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .center,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            )
+        )
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .left,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            )
+        )
+        XCTAssertFalse(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .center,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: false
+            )
+        )
+        XCTAssertTrue(
+            UnifiedPaneDropDelegate.acceptsFileDrop(
+                zone: .right,
+                hasExternalFileDropHandler: true,
+                hasLegacyFileDropHandler: false
+            )
+        )
+    }
+
+    func testFileURLPasteboardReaderReturnsFileURLs() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bonsplit-file-drop-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("sample.txt")
+        try "sample".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("bonsplit.file-drop.\(UUID().uuidString)"))
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
+
+        XCTAssertEqual(UnifiedPaneDropDelegate.fileURLs(from: pasteboard), [fileURL])
+    }
+
     func testSelectedTabNeverShowsHoverBackground() {
         XCTAssertFalse(
             TabItemStyling.shouldShowHoverBackground(isHovered: true, isSelected: true)

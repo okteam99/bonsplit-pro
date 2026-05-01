@@ -299,7 +299,7 @@ struct PaneContainerView<Content: View, EmptyContent: View>: View {
                 .allowsHitTesting(!isTabDragActive)
 
             Color.clear
-                .onDrop(of: [.tabTransfer], delegate: UnifiedPaneDropDelegate(
+                .onDrop(of: [.tabTransfer, .fileURL], delegate: UnifiedPaneDropDelegate(
                     size: size,
                     pane: pane,
                     controller: controller,
@@ -408,29 +408,28 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         // may not have propagated yet when performDrop runs.
         guard let draggedTab = controller.activeDragTab ?? controller.draggingTab,
               let sourcePaneId = controller.activeDragSourcePaneId ?? controller.dragSourcePaneId else {
-            guard let transfer = decodeTransfer(from: info),
-                  transfer.isFromCurrentProcess else {
-                return false
-            }
-            let destination: BonsplitController.ExternalTabDropRequest.Destination
-            if zone == .center {
-                destination = .insert(targetPane: pane.id, targetIndex: nil)
-            } else if let orientation = zone.orientation {
-                destination = .split(
-                    targetPane: pane.id,
-                    orientation: orientation,
-                    insertFirst: zone.insertsFirst
+            if info.hasItemsConforming(to: [.tabTransfer]) {
+                guard let transfer = decodeTransfer(from: info),
+                      transfer.isFromCurrentProcess,
+                      let destination = destination(for: zone) else {
+                    return false
+                }
+
+                let request = BonsplitController.ExternalTabDropRequest(
+                    tabId: TabID(id: transfer.tab.id),
+                    sourcePaneId: PaneID(id: transfer.sourcePaneId),
+                    destination: destination
                 )
-            } else {
-                return false
+                let handled = bonsplitController.onExternalTabDrop?(request) ?? false
+                if handled {
+                    dropLifecycle = .idle
+                    activeDropZone = nil
+                }
+                return handled
             }
 
-            let request = BonsplitController.ExternalTabDropRequest(
-                tabId: TabID(id: transfer.tab.id),
-                sourcePaneId: PaneID(id: transfer.sourcePaneId),
-                destination: destination
-            )
-            let handled = bonsplitController.onExternalTabDrop?(request) ?? false
+            guard info.hasItemsConforming(to: [.fileURL]) else { return false }
+            let handled = performFileDrop(info: info, zone: zone)
             if handled {
                 dropLifecycle = .idle
                 activeDropZone = nil
@@ -509,14 +508,14 @@ struct UnifiedPaneDropDelegate: DropDelegate {
 #if DEBUG
             dlog("pane.dropUpdated.skip pane=\(pane.id.id.uuidString.prefix(5)) reason=lifecycle_idle")
 #endif
-            return DropProposal(operation: .move)
+            return DropProposal(operation: dropOperation(for: info))
         }
         let zone = effectiveZone(for: info)
         activeDropZone = zone
 #if DEBUG
         dlog("pane.dropUpdated pane=\(pane.id.id.uuidString.prefix(5)) zone=\(zone)")
 #endif
-        return DropProposal(operation: .move)
+        return DropProposal(operation: dropOperation(for: info))
     }
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -527,31 +526,115 @@ struct UnifiedPaneDropDelegate: DropDelegate {
 #endif
             return false
         }
-        // The custom UTType alone is sufficient — only Bonsplit tab drags produce it.
-        // Do NOT gate on draggingTab != nil: @Observable changes from createItemProvider
-        // may not have propagated to the drop delegate yet, causing false rejections.
-        let hasType = info.hasItemsConforming(to: [.tabTransfer])
-        guard hasType else { return false }
+        let hasTabTransfer = info.hasItemsConforming(to: [.tabTransfer])
+        let hasFileURL = info.hasItemsConforming(to: [.fileURL])
+        guard hasTabTransfer || hasFileURL else { return false }
 
         // Local drags use in-memory state and are always same-process.
         if controller.activeDragTab != nil || controller.draggingTab != nil {
             return true
         }
 
-        // External drags (another Bonsplit controller) must include a payload from this process.
-        guard let transfer = decodeTransfer(from: info),
-              transfer.isFromCurrentProcess else {
-            return false
+        if hasTabTransfer {
+            // External drags (another Bonsplit controller) must include a payload from this process.
+            guard let transfer = decodeTransfer(from: info),
+                  transfer.isFromCurrentProcess else {
+                return false
+            }
+        } else if hasFileURL {
+            guard Self.acceptsFileDrop(
+                zone: effectiveZone(for: info),
+                hasExternalFileDropHandler: bonsplitController.onExternalFileDrop != nil,
+                hasLegacyFileDropHandler: controller.onFileDrop != nil
+            ) else {
+                return false
+            }
         }
 #if DEBUG
         let hasDrag = controller.draggingTab != nil
         let hasActive = controller.activeDragTab != nil
         dlog(
             "pane.validateDrop pane=\(pane.id.id.uuidString.prefix(5)) " +
-            "allowed=\(hasType ? 1 : 0) hasDrag=\(hasDrag ? 1 : 0) hasActive=\(hasActive ? 1 : 0)"
+            "hasTab=\(hasTabTransfer ? 1 : 0) hasFile=\(hasFileURL ? 1 : 0) " +
+            "hasDrag=\(hasDrag ? 1 : 0) hasActive=\(hasActive ? 1 : 0)"
         )
 #endif
         return true
+    }
+
+    static func acceptsFileDrop(
+        zone: DropZone,
+        hasExternalFileDropHandler: Bool,
+        hasLegacyFileDropHandler: Bool
+    ) -> Bool {
+        if hasExternalFileDropHandler {
+            return true
+        }
+        guard hasLegacyFileDropHandler else {
+            return false
+        }
+        return zone == .center
+    }
+
+    private func dropOperation(for info: DropInfo) -> DropOperation {
+        info.hasItemsConforming(to: [.fileURL]) && !info.hasItemsConforming(to: [.tabTransfer])
+            ? .copy
+            : .move
+    }
+
+    private func destination(
+        for zone: DropZone
+    ) -> BonsplitController.ExternalTabDropRequest.Destination? {
+        if zone == .center {
+            return .insert(targetPane: pane.id, targetIndex: nil)
+        }
+        guard let orientation = zone.orientation else { return nil }
+        return .split(
+            targetPane: pane.id,
+            orientation: orientation,
+            insertFirst: zone.insertsFirst
+        )
+    }
+
+    private func performFileDrop(info: DropInfo, zone: DropZone) -> Bool {
+        guard let destination = destination(for: zone) else { return false }
+        let urls = fileURLs(from: info)
+        guard !urls.isEmpty else { return false }
+
+        if let handler = bonsplitController.onExternalFileDrop {
+            return handler(BonsplitController.ExternalFileDropRequest(urls: urls, destination: destination))
+        }
+
+        if case .insert = destination {
+            return controller.onFileDrop?(urls, pane.id) ?? false
+        }
+        return false
+    }
+
+    private func fileURLs(from info: DropInfo) -> [URL] {
+        guard info.hasItemsConforming(to: [.fileURL]) else { return [] }
+
+        // DropInfo exposes file URLs through asynchronous item providers, but
+        // DropDelegate.performDrop needs a synchronous result. AppKit publishes
+        // Finder/local file drags on the drag pasteboard for this callback.
+        return Self.fileURLs(from: NSPasteboard(name: .drag))
+    }
+
+    static func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        let objects = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) ?? []
+        return objects.compactMap { object -> URL? in
+            if let url = object as? URL {
+                return url.isFileURL ? url : nil
+            }
+            if let url = object as? NSURL {
+                let bridged = url as URL
+                return bridged.isFileURL ? bridged : nil
+            }
+            return nil
+        }
     }
 
     private func decodeTransfer(from string: String) -> TabTransferData? {

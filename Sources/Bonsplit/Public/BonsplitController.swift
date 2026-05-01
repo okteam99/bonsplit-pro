@@ -23,6 +23,16 @@ public final class BonsplitController {
         }
     }
 
+    public struct ExternalFileDropRequest {
+        public let urls: [URL]
+        public let destination: ExternalTabDropRequest.Destination
+
+        public init(urls: [URL], destination: ExternalTabDropRequest.Destination) {
+            self.urls = urls
+            self.destination = destination
+        }
+    }
+
     // MARK: - Delegate
 
     /// Delegate for receiving callbacks about tab bar events
@@ -59,6 +69,10 @@ public final class BonsplitController {
     /// Handler for tab drops originating from another Bonsplit controller (e.g. another workspace/window).
     /// Return `true` when the drop has been handled by the host application.
     @ObservationIgnored public var onExternalTabDrop: ((ExternalTabDropRequest) -> Bool)?
+
+    /// Handler for file drops from external apps, routed through pane drop zones.
+    /// Return `true` when the drop has been handled by the host application.
+    @ObservationIgnored public var onExternalFileDrop: ((ExternalFileDropRequest) -> Bool)?
 
     /// Host-provided destinations for the tab context menu's Move Tab submenu.
     @ObservationIgnored public var tabContextMoveDestinationsProvider: ((TabID, PaneID) -> [TabContextMoveDestination])?
