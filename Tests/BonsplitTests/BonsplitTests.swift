@@ -1763,7 +1763,40 @@ final class BonsplitTests: XCTestCase {
         }
 
         XCTAssertGreaterThan(alphas.solid, 0.25)
-        XCTAssertLessThan(alphas.fadeStart, alphas.solid * 0.5)
+        XCTAssertGreaterThan(alphas.fadeEnd, alphas.solid * 0.55)
+        XCTAssertEqual(alphas.fadeEnd, alphas.solidStart, accuracy: 0.15)
+    }
+
+    func testSharedBackdropActionLaneSeparatorMatchesMaskedTabContentGeometry() {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let layout = TabBarLayout(
+            tabBarHeight: size.height,
+            availableWidth: size.width,
+            splitButtonCount: buttonCount,
+            splitButtonLaneVisible: true,
+            reservesSplitButtonLane: true,
+            measuredSplitButtonLaneWidth: TabBarStyling.splitButtonsBackdropWidth(buttonCount: buttonCount)
+        )
+        let snapshot = TabBarChromeSnapshot(
+            appearance: sharedBackdropManyActionAppearance(
+                tabBarHeight: size.height,
+                buttonCount: buttonCount
+            ),
+            layout: layout,
+            isFocused: true,
+            shouldShowSplitButtons: true,
+            fadeColorStyle: 0
+        )
+
+        XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.actionLaneSeparatorSolidWidth, snapshot.contentOcclusionWidth, accuracy: 0.0001)
+        XCTAssertLessThan(snapshot.actionLaneSeparatorSolidWidth, snapshot.backdropSolidWidth)
+        XCTAssertEqual(
+            snapshot.actionLaneSeparatorFadeWidth + snapshot.actionLaneSeparatorSolidWidth,
+            snapshot.contentFadeWidth + snapshot.contentOcclusionWidth,
+            accuracy: 0.0001
+        )
     }
 
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
@@ -2647,11 +2680,12 @@ final class BonsplitTests: XCTestCase {
             showSplitButtons: true,
             size: size,
             configurePane: { pane in
+                let leading = TabItem(title: "", icon: nil)
                 let selected = TabItem(
                     title: "selected tab title that reaches under the full action button lane",
                     icon: nil
                 )
-                pane.tabs = [selected]
+                pane.tabs = [leading, selected]
                 pane.selectedTabId = selected.id
             }
         ) { hostingView in
@@ -2669,6 +2703,9 @@ final class BonsplitTests: XCTestCase {
     @MainActor
     private func renderedSharedBackdropActionLaneBottomSeparatorAlphas() -> (
         fadeStart: CGFloat,
+        fadeMid: CGFloat,
+        fadeEnd: CGFloat,
+        solidStart: CGFloat,
         solid: CGFloat
     )? {
         let buttonCount = 28
@@ -2679,16 +2716,11 @@ final class BonsplitTests: XCTestCase {
             visibleLaneWidth: splitButtonLaneWidth,
             contentOcclusionFraction: 0.6875
         )
-        let solidWidth = TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
-            effectSolidWidth: 23.875,
-            contentOcclusionWidth: contentOcclusionWidth,
-            contentFadeWidth: contentFadeWidth
-        )
-        let fadeWidth: CGFloat = 99.75
         let appearance = sharedBackdropManyActionAppearance(
             tabBarHeight: size.height,
             buttonCount: buttonCount,
-            borderHex: "#FFFFFF80"
+            borderHex: "#FFFFFF80",
+            tabMaxWidth: size.width
         )
 
         return renderedTabBarValue(
@@ -2697,37 +2729,59 @@ final class BonsplitTests: XCTestCase {
             showSplitButtons: true,
             size: size,
             configurePane: { pane in
+                let leading = TabItem(title: "", icon: nil)
                 let selected = TabItem(
                     title: "selected tab title that reaches under the full action button lane",
                     icon: nil
                 )
-                pane.tabs = [selected]
+                pane.tabs = [leading, selected]
                 pane.selectedTabId = selected.id
             }
         ) { hostingView in
             let separatorY = size.height - 0.5
-            let fadeStartX = size.width - solidWidth - fadeWidth + 2
+            let fadeStartX = size.width - contentOcclusionWidth - contentFadeWidth
+            let solidStartX = size.width - contentOcclusionWidth
             guard let fadeStart = renderedColorInViewCoordinates(
                 in: hostingView,
-                at: NSPoint(x: fadeStartX, y: separatorY)
+                at: NSPoint(x: fadeStartX + 2, y: separatorY)
             )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let fadeMid = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: fadeStartX + (contentFadeWidth / 2), y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let fadeEnd = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: solidStartX - 2, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let solidStart = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: solidStartX + 2, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
                   let solid = renderedColorInViewCoordinates(
                     in: hostingView,
                     at: NSPoint(x: size.width - 6, y: separatorY)
                   )?.usingColorSpace(.sRGB)?.alphaComponent else {
                 return nil
             }
-            return (fadeStart: fadeStart, solid: solid)
+            return (
+                fadeStart: fadeStart,
+                fadeMid: fadeMid,
+                fadeEnd: fadeEnd,
+                solidStart: solidStart,
+                solid: solid
+            )
         }
     }
 
     private func sharedBackdropManyActionAppearance(
         tabBarHeight: CGFloat,
         buttonCount: Int,
-        borderHex: String = "#66666680"
+        borderHex: String = "#66666680",
+        tabMaxWidth: CGFloat = 220
     ) -> BonsplitConfiguration.Appearance {
         BonsplitConfiguration.Appearance(
             tabBarHeight: tabBarHeight,
+            tabMaxWidth: tabMaxWidth,
             splitButtons: manySplitActionButtons(count: buttonCount),
             splitButtonBackdropEffect: .init(
                 style: .translucentChrome,
@@ -2824,7 +2878,6 @@ final class BonsplitTests: XCTestCase {
               y < bitmap.pixelsHigh else { return nil }
         return bitmap.colorAt(x: x, y: y)
     }
-
     @MainActor
     private func renderedTabBarValue<T>(
         isFocused: Bool,

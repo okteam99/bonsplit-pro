@@ -434,6 +434,14 @@ struct TabBarChromeSnapshot {
         backdropFadeWidth * (1 - backdropFadeRampStartFraction)
     }
 
+    var actionLaneSeparatorFadeWidth: CGFloat {
+        masksTabContentUnderActionLane ? contentFadeWidth : backdropVisibleFadeWidth
+    }
+
+    var actionLaneSeparatorSolidWidth: CGFloat {
+        masksTabContentUnderActionLane ? contentOcclusionWidth : backdropSolidWidth
+    }
+
     init(
         appearance: BonsplitConfiguration.Appearance,
         layout: TabBarLayout,
@@ -1238,11 +1246,27 @@ struct TabBarView: View {
     private var splitButtonBackdropChrome: some View {
         let snapshot = chromeSnapshot
         if snapshot.drawsActionLaneSeparator {
-            HStack(spacing: 0) {
-                if snapshot.backdropFadeWidth > 0 {
-                    splitButtonBackdropFadeSegment(snapshot: snapshot)
+            ZStack(alignment: .trailing) {
+                if snapshot.paintsActionLaneSurface {
+                    HStack(spacing: 0) {
+                        if snapshot.backdropFadeWidth > 0 {
+                            splitButtonBackdropFadeSegment(snapshot: snapshot)
+                        }
+                        TabBarLayerBackedColor(color: snapshot.backdropTrailingColor)
+                            .frame(width: snapshot.backdropSolidWidth, height: tabBarHeight)
+                    }
+                    .frame(height: tabBarHeight)
                 }
-                splitButtonBackdropSolidSegment(snapshot: snapshot)
+
+                HStack(spacing: 0) {
+                    if snapshot.actionLaneSeparatorFadeWidth > 0 {
+                        splitButtonSeparatorFadeSegment(snapshot: snapshot)
+                    }
+                    Rectangle()
+                        .fill(TabBarColors.separator(for: appearance))
+                        .frame(width: snapshot.actionLaneSeparatorSolidWidth, height: 1)
+                }
+                .frame(height: tabBarHeight, alignment: .bottom)
             }
             .frame(height: tabBarHeight)
         }
@@ -1251,47 +1275,30 @@ struct TabBarView: View {
     @ViewBuilder
     private func splitButtonBackdropFadeSegment(snapshot: TabBarChromeSnapshot) -> some View {
         let rampStart = snapshot.backdropFadeRampStartFraction
-        ZStack(alignment: .bottomTrailing) {
-            if snapshot.paintsActionLaneSurface {
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(nsColor: snapshot.backdropLeadingColor), location: 0),
-                        .init(color: Color(nsColor: snapshot.backdropLeadingColor), location: rampStart),
-                        .init(color: Color(nsColor: snapshot.backdropTrailingColor), location: 1)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            }
-            if snapshot.drawsActionLaneSeparator {
-                let separator = TabBarColors.separator(for: appearance)
-                LinearGradient(
-                    colors: [
-                        separator.opacity(0),
-                        separator
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: snapshot.backdropVisibleFadeWidth, height: 1)
-            }
-        }
-        .frame(width: snapshot.backdropFadeWidth, height: tabBarHeight, alignment: .bottom)
+        LinearGradient(
+            stops: [
+                .init(color: Color(nsColor: snapshot.backdropLeadingColor), location: 0),
+                .init(color: Color(nsColor: snapshot.backdropLeadingColor), location: rampStart),
+                .init(color: Color(nsColor: snapshot.backdropTrailingColor), location: 1)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(width: snapshot.backdropFadeWidth, height: tabBarHeight)
     }
 
     @ViewBuilder
-    private func splitButtonBackdropSolidSegment(snapshot: TabBarChromeSnapshot) -> some View {
-        ZStack(alignment: .bottom) {
-            if snapshot.paintsActionLaneSurface {
-                TabBarLayerBackedColor(color: snapshot.backdropTrailingColor)
-            }
-            if snapshot.drawsActionLaneSeparator {
-                Rectangle()
-                    .fill(TabBarColors.separator(for: appearance))
-                    .frame(height: 1)
-            }
-        }
-        .frame(width: snapshot.backdropSolidWidth, height: tabBarHeight, alignment: .bottom)
+    private func splitButtonSeparatorFadeSegment(snapshot: TabBarChromeSnapshot) -> some View {
+        let separator = TabBarColors.separator(for: appearance)
+        LinearGradient(
+            colors: [
+                separator.opacity(0),
+                separator
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(width: snapshot.actionLaneSeparatorFadeWidth, height: 1)
     }
 
     @ViewBuilder
