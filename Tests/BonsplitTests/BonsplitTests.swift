@@ -450,7 +450,8 @@ final class BonsplitTests: XCTestCase {
         )
         let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
             solidWidth: 23.875,
-            solidSurfaceWidthAdjustment: -53
+            solidSurfaceWidthAdjustment: -53,
+            contentOcclusionFraction: 0.6875
         )
         let geometry = TabBarActionLaneGeometry(
             layout: layout,
@@ -460,6 +461,7 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 60, accuracy: 0.0001)
         XCTAssertEqual(geometry.backgroundSolidWidth, 60, accuracy: 0.0001)
+        XCTAssertEqual(geometry.contentOcclusionWidth, 60, accuracy: 0.0001)
     }
 
     func testActionLaneSolidSurfaceAllowsTrimWhenButtonsDoNotOverflow() {
@@ -473,7 +475,8 @@ final class BonsplitTests: XCTestCase {
         )
         let effect = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect(
             solidWidth: 23.875,
-            solidSurfaceWidthAdjustment: -53
+            solidSurfaceWidthAdjustment: -53,
+            contentOcclusionFraction: 0.6875
         )
         let geometry = TabBarActionLaneGeometry(
             layout: layout,
@@ -483,6 +486,7 @@ final class BonsplitTests: XCTestCase {
 
         XCTAssertEqual(layout.visibleSplitButtonLaneWidth, 160, accuracy: 0.0001)
         XCTAssertEqual(geometry.backgroundSolidWidth, 107, accuracy: 0.0001)
+        XCTAssertEqual(geometry.contentOcclusionWidth, 110, accuracy: 0.0001)
     }
 
     func testSplitButtonBackdropSolidSurfaceCoversVisibleActionLane() {
@@ -1830,6 +1834,16 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    func testOverflowingSplitButtonsClipToActionLane() {
+        guard let brightness = renderedEscapedSplitButtonBrightnessOutsideActionLane() else {
+            XCTFail("Expected rendered split button overflow colors")
+            return
+        }
+
+        XCTAssertLessThan(brightness, 0.30)
+    }
+
+    @MainActor
     func testSharedBackdropActionLaneBottomSeparatorCoversSolidAreaAndFadesOut() {
         guard let alphas = renderedSharedBackdropActionLaneBottomSeparatorAlphas() else {
             XCTFail("Expected rendered shared backdrop action lane separator colors")
@@ -1837,11 +1851,14 @@ final class BonsplitTests: XCTestCase {
         }
 
         XCTAssertGreaterThan(alphas.solid, 0.25)
+        XCTAssertLessThan(alphas.fadeStart, alphas.solid * 0.25)
+        XCTAssertLessThan(alphas.beforeRamp, alphas.solid * 0.25)
+        XCTAssertGreaterThan(alphas.afterRamp, alphas.solid * 0.25)
         XCTAssertGreaterThan(alphas.fadeEnd, alphas.solid * 0.55)
         XCTAssertEqual(alphas.fadeEnd, alphas.solidStart, accuracy: 0.15)
     }
 
-    func testSharedBackdropActionLaneSeparatorMatchesMaskedTabContentGeometry() {
+    func testSharedBackdropActionLaneSeparatorMatchesBackdropGradientGeometry() {
         let buttonCount = 28
         let size = NSSize(width: 360, height: 28)
         let layout = TabBarLayout(
@@ -1863,12 +1880,12 @@ final class BonsplitTests: XCTestCase {
             fadeColorStyle: 0
         )
 
-        XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, snapshot.backdropFadeWidth, accuracy: 0.0001)
         XCTAssertEqual(snapshot.actionLaneSeparatorSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
         XCTAssertEqual(snapshot.backdropSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
         XCTAssertEqual(
             snapshot.actionLaneSeparatorFadeWidth + snapshot.actionLaneSeparatorSolidWidth,
-            snapshot.contentFadeWidth + snapshot.actionLaneWidth,
+            snapshot.backdropFadeWidth + snapshot.actionLaneWidth,
             accuracy: 0.0001
         )
     }
@@ -2842,9 +2859,61 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
+    private func renderedEscapedSplitButtonBrightnessOutsideActionLane() -> CGFloat? {
+        let buttonCount = 28
+        let size = NSSize(width: 360, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            tabMaxWidth: 40,
+            splitButtons: manySplitActionButtons(count: buttonCount),
+            splitButtonBackdropEffect: .init(
+                style: .translucentChrome,
+                fadeWidth: 99.75,
+                contentFadeWidth: 28.875,
+                solidWidth: 23.875,
+                fadeRampStartFraction: 0.60,
+                leadingOpacity: 0,
+                trailingOpacity: 0.8625,
+                contentOcclusionFraction: 0.6875,
+                masksTabContent: true
+            ),
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#000000",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(title: "", icon: nil)
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            maximumBrightness(
+                in: hostingView,
+                sampleRect: NSRect(
+                    x: 100,
+                    y: 5,
+                    width: size.width - splitButtonLaneWidth - 108,
+                    height: size.height - 10
+                )
+            )
+        }
+    }
+
+    @MainActor
     private func renderedSharedBackdropActionLaneBottomSeparatorAlphas() -> (
         fadeStart: CGFloat,
-        fadeMid: CGFloat,
+        beforeRamp: CGFloat,
+        afterRamp: CGFloat,
         fadeEnd: CGFloat,
         solidStart: CGFloat,
         solid: CGFloat
@@ -2852,7 +2921,8 @@ final class BonsplitTests: XCTestCase {
         let buttonCount = 28
         let size = NSSize(width: 360, height: 28)
         let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
-        let contentFadeWidth: CGFloat = 28.875
+        let separatorFadeWidth: CGFloat = 99.75
+        let rampStartFraction: CGFloat = 0.60
         let contentOcclusionWidth = TabBarStyling.splitButtonContentOcclusionWidth(
             visibleLaneWidth: splitButtonLaneWidth,
             contentOcclusionFraction: 0.6875
@@ -2881,15 +2951,20 @@ final class BonsplitTests: XCTestCase {
             }
         ) { hostingView in
             let separatorY = size.height - 0.5
-            let fadeStartX = size.width - solidWidth - contentFadeWidth
+            let fadeStartX = size.width - solidWidth - separatorFadeWidth
+            let rampStartX = fadeStartX + separatorFadeWidth * rampStartFraction
             let solidStartX = size.width - solidWidth
             guard let fadeStart = renderedColorInViewCoordinates(
                 in: hostingView,
                 at: NSPoint(x: fadeStartX + 2, y: separatorY)
             )?.usingColorSpace(.sRGB)?.alphaComponent,
-                  let fadeMid = renderedColorInViewCoordinates(
+                  let beforeRamp = renderedColorInViewCoordinates(
                     in: hostingView,
-                    at: NSPoint(x: fadeStartX + (contentFadeWidth / 2), y: separatorY)
+                    at: NSPoint(x: rampStartX - 2, y: separatorY)
+                  )?.usingColorSpace(.sRGB)?.alphaComponent,
+                  let afterRamp = renderedColorInViewCoordinates(
+                    in: hostingView,
+                    at: NSPoint(x: rampStartX + 16, y: separatorY)
                   )?.usingColorSpace(.sRGB)?.alphaComponent,
                   let fadeEnd = renderedColorInViewCoordinates(
                     in: hostingView,
@@ -2907,7 +2982,8 @@ final class BonsplitTests: XCTestCase {
             }
             return (
                 fadeStart: fadeStart,
-                fadeMid: fadeMid,
+                beforeRamp: beforeRamp,
+                afterRamp: afterRamp,
                 fadeEnd: fadeEnd,
                 solidStart: solidStart,
                 solid: solid
@@ -3101,6 +3177,35 @@ final class BonsplitTests: XCTestCase {
                 let low = min(red, green, blue)
                 let saturation = (high - low) / high
                 maximum = max(maximum, saturation)
+            }
+        }
+        return maximum
+    }
+
+    @MainActor
+    private func maximumBrightness(in view: NSView, sampleRect: NSRect) -> CGFloat? {
+        let integralBounds = view.bounds.integral
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: integralBounds) else { return nil }
+        bitmap.size = integralBounds.size
+        view.cacheDisplay(in: integralBounds, to: bitmap)
+
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1, integralBounds.width)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1, integralBounds.height)
+        let minX = max(0, Int(floor(sampleRect.minX * scaleX)))
+        let maxX = min(bitmap.pixelsWide, Int(ceil(sampleRect.maxX * scaleX)))
+        let minY = max(0, Int(floor(sampleRect.minY * scaleY)))
+        let maxY = min(bitmap.pixelsHigh, Int(ceil(sampleRect.maxY * scaleY)))
+
+        var maximum: CGFloat = 0
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                guard let color = bitmap.colorAt(x: x, y: y),
+                      let rgb = color.usingColorSpace(.sRGB),
+                      rgb.alphaComponent > 0.05 else { continue }
+                maximum = max(
+                    maximum,
+                    max(rgb.redComponent, rgb.greenComponent, rgb.blueComponent)
+                )
             }
         }
         return maximum
