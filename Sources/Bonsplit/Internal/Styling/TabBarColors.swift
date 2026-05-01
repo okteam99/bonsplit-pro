@@ -137,6 +137,12 @@ enum TabBarColors {
         splitButtonBackdropColor(for: appearance) ?? nsColorBarBackground(for: appearance)
     }
 
+    static func nsColorSplitButtonBackdropOccludingSurface(for appearance: BonsplitConfiguration.Appearance) -> NSColor {
+        nonClearColor(splitButtonBackdropColor(for: appearance))
+            ?? semanticTabBarBackgroundColor(for: appearance)
+            ?? nsColorBarBackground(for: appearance)
+    }
+
     static func nsColorSplitButtonBackdrop(
         for appearance: BonsplitConfiguration.Appearance,
         focused: Bool = true

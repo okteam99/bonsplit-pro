@@ -405,6 +405,189 @@ struct TabBarLayout: Equatable {
     }
 }
 
+struct TabBarChromeSnapshot {
+    let layout: TabBarLayout
+    let barColor: NSColor
+    let actionLaneWidth: CGFloat
+    let paintsActionLaneSurface: Bool
+    let masksTabContentUnderActionLane: Bool
+    let contentFadeWidth: CGFloat
+    let contentOcclusionWidth: CGFloat
+    let backdropFadeWidth: CGFloat
+    let backdropSolidWidth: CGFloat
+    let backdropFadeRampStartFraction: CGFloat
+    let backdropLeadingColor: NSColor
+    let backdropTrailingColor: NSColor
+
+    init(
+        appearance: BonsplitConfiguration.Appearance,
+        layout: TabBarLayout,
+        isFocused: Bool,
+        shouldShowSplitButtons: Bool,
+        fadeColorStyle: Int
+    ) {
+        self.layout = layout
+        self.actionLaneWidth = layout.visibleSplitButtonLaneWidth
+
+        let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
+        self.barColor = appearance.usesSharedBackdrop || isFocused
+            ? baseBarColor
+            : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
+
+        let effect = Self.splitButtonBackdropEffect(
+            for: appearance,
+            fadeColorStyle: fadeColorStyle
+        )
+        let targetColor = Self.buttonBackdropColor(
+            for: appearance,
+            focused: isFocused,
+            style: effect.style
+        )
+        let colors = Self.splitButtonBackdropColors(
+            from: barColor,
+            to: targetColor,
+            leadingOpacity: effect.leadingOpacity,
+            trailingOpacity: effect.trailingOpacity,
+            usesSharedBackdrop: appearance.usesSharedBackdrop
+        )
+
+        self.paintsActionLaneSurface = shouldShowSplitButtons
+            && effect.style != .hidden
+            && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
+        self.masksTabContentUnderActionLane = paintsActionLaneSurface && effect.masksTabContent
+        self.contentFadeWidth = masksTabContentUnderActionLane ? effect.contentFadeWidth : 0
+        self.contentOcclusionWidth = masksTabContentUnderActionLane ? actionLaneWidth : 0
+        self.backdropFadeWidth = max(0, effect.fadeWidth)
+        self.backdropSolidWidth = TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
+            effectSolidWidth: effect.solidWidth,
+            visibleLaneWidth: actionLaneWidth,
+            contentFadeWidth: contentFadeWidth
+        )
+        self.backdropFadeRampStartFraction = min(max(0, effect.fadeRampStartFraction), 0.95)
+        self.backdropLeadingColor = colors.leading
+        self.backdropTrailingColor = colors.trailing
+    }
+
+    private static func splitButtonBackdropEffect(
+        for appearance: BonsplitConfiguration.Appearance,
+        fadeColorStyle: Int
+    ) -> BonsplitConfiguration.Appearance.SplitButtonBackdropEffect {
+        if let effect = appearance.splitButtonBackdropEffect {
+            return effect
+        }
+        if let style = appearance.splitButtonBackdropStyle {
+            return .init(style: style)
+        }
+        if let debugStyle = BonsplitConfiguration.Appearance.SplitButtonBackdropStyle(rawValue: fadeColorStyle) {
+            return .init(
+                style: debugStyle,
+                fadeWidth: 136,
+                solidWidth: 2,
+                fadeRampStartFraction: 0.80,
+                leadingOpacity: 0,
+                trailingOpacity: 0.80,
+                masksTabContent: false
+            )
+        }
+        return .default
+    }
+
+    private static func buttonBackdropColor(
+        for appearance: BonsplitConfiguration.Appearance,
+        focused: Bool,
+        style: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle
+    ) -> NSColor {
+        if appearance.usesSharedBackdrop {
+            return TabBarColors.nsColorSplitButtonBackdropOccludingSurface(for: appearance)
+        }
+
+        switch style {
+        case .opaquePaneBackground:
+            return TabBarColors.nsColorPaneBackground(for: appearance).withAlphaComponent(1.0)
+        case .opaqueBarBackground:
+            return TabBarColors.nsColorBarBackground(for: appearance).withAlphaComponent(1.0)
+        case .windowBackground:
+            return NSColor.windowBackgroundColor.withAlphaComponent(1.0)
+        case .controlBackground:
+            return NSColor.controlBackgroundColor.withAlphaComponent(1.0)
+        case .precompositedBarBackground:
+            let chrome = TabBarColors.nsColorBarBackground(for: appearance)
+            let winBg = NSColor.windowBackgroundColor
+            guard let fg = chrome.usingColorSpace(.sRGB),
+                  let bk = winBg.usingColorSpace(.sRGB) else {
+                return chrome.withAlphaComponent(1.0)
+            }
+            let a: CGFloat = focused ? fg.alphaComponent : fg.alphaComponent * 0.95
+            let oneMinusA = 1.0 - a
+            let r = fg.redComponent * a + bk.redComponent * oneMinusA
+            let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
+            let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
+            return NSColor(red: r, green: g, blue: b, alpha: 1.0)
+        case .translucentChrome:
+            let backdrop = TabBarColors.nsColorSplitButtonBackdropSurface(for: appearance)
+            let alpha = focused ? backdrop.alphaComponent : backdrop.alphaComponent * 0.95
+            return backdrop.withAlphaComponent(alpha)
+        case .hidden:
+            return .clear
+        case .precompositedPaneBackground:
+            return TabBarColors.nsColorSplitButtonBackdrop(for: appearance, focused: focused)
+        }
+    }
+
+    private static func blendedSurfaceColor(
+        from base: NSColor,
+        to target: NSColor,
+        amount: CGFloat
+    ) -> NSColor {
+        let clampedAmount = min(max(amount, 0), 1)
+        let source = base.usingColorSpace(.sRGB) ?? base
+        let destination = target.usingColorSpace(.sRGB) ?? target
+        let inverse = 1 - clampedAmount
+        return NSColor(
+            red: source.redComponent * inverse + destination.redComponent * clampedAmount,
+            green: source.greenComponent * inverse + destination.greenComponent * clampedAmount,
+            blue: source.blueComponent * inverse + destination.blueComponent * clampedAmount,
+            alpha: source.alphaComponent * inverse + destination.alphaComponent * clampedAmount
+        )
+    }
+
+    private static func splitButtonBackdropColors(
+        from base: NSColor,
+        to target: NSColor,
+        leadingOpacity: CGFloat,
+        trailingOpacity: CGFloat,
+        usesSharedBackdrop: Bool
+    ) -> (leading: NSColor, trailing: NSColor) {
+        if usesSharedBackdrop {
+            return (
+                alphaOnlySurfaceColor(target, opacity: leadingOpacity),
+                alphaOnlySurfaceColor(target, opacity: trailingOpacity)
+            )
+        }
+
+        return (
+            blendedSurfaceColor(from: base, to: target, amount: leadingOpacity),
+            blendedSurfaceColor(from: base, to: target, amount: trailingOpacity)
+        )
+    }
+
+    private static func alphaOnlySurfaceColor(
+        _ color: NSColor,
+        opacity: CGFloat
+    ) -> NSColor {
+        let clampedOpacity = min(max(opacity, 0), 1)
+        guard let source = color.usingColorSpace(.sRGB) else {
+            return color.withAlphaComponent(color.alphaComponent * clampedOpacity)
+        }
+        return NSColor(
+            red: source.redComponent,
+            green: source.greenComponent,
+            blue: source.blueComponent,
+            alpha: source.alphaComponent * clampedOpacity
+        )
+    }
+}
+
 struct TabContextMenuState {
     let isPinned: Bool
     let isUnread: Bool
@@ -496,6 +679,16 @@ struct TabBarView: View {
         )
     }
 
+    private var chromeSnapshot: TabBarChromeSnapshot {
+        TabBarChromeSnapshot(
+            appearance: appearance,
+            layout: tabBarLayout,
+            isFocused: isFocused,
+            shouldShowSplitButtons: shouldShowSplitButtons,
+            fadeColorStyle: fadeColorStyle
+        )
+    }
+
     private var visibleSplitButtons: [BonsplitConfiguration.SplitActionButton] {
         guard showSplitButtons else { return [] }
         return appearance.splitButtons
@@ -509,63 +702,8 @@ struct TabBarView: View {
         shouldRenderSplitButtons && (!isMinimalMode || isHoveringTabBar)
     }
 
-    private var splitButtonBackdropEffect: BonsplitConfiguration.Appearance.SplitButtonBackdropEffect {
-        if let effect = appearance.splitButtonBackdropEffect {
-            return effect
-        }
-        if let style = appearance.splitButtonBackdropStyle {
-            return .init(style: style)
-        }
-        if let debugStyle = BonsplitConfiguration.Appearance.SplitButtonBackdropStyle(rawValue: fadeColorStyle) {
-            return .init(
-                style: debugStyle,
-                fadeWidth: 136,
-                solidWidth: 2,
-                fadeRampStartFraction: 0.80,
-                leadingOpacity: 0,
-                trailingOpacity: 0.80,
-                masksTabContent: false
-            )
-        }
-        return .default
-    }
-
-    private var shouldPaintSplitButtonBackdrop: Bool {
-        shouldShowSplitButtons
-            && splitButtonBackdropEffect.style != .hidden
-            && TabBarColors.shouldPaintSplitButtonBackdrop(for: appearance)
-    }
-
-    private var shouldMaskTabsUnderSplitButtonBackdrop: Bool {
-        shouldPaintSplitButtonBackdrop && splitButtonBackdropEffect.masksTabContent
-    }
-
     private var splitButtonsBackdropWidth: CGFloat {
-        tabBarLayout.visibleSplitButtonLaneWidth
-    }
-
-    private var splitButtonBackdropFadeWidth: CGFloat {
-        max(0, splitButtonBackdropEffect.fadeWidth)
-    }
-
-    private var splitButtonBackdropSolidWidth: CGFloat {
-        TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
-            effectSolidWidth: splitButtonBackdropEffect.solidWidth,
-            visibleLaneWidth: splitButtonsBackdropWidth,
-            contentFadeWidth: splitButtonContentFadeWidth
-        )
-    }
-
-    private var splitButtonBackdropFadeRampStartFraction: CGFloat {
-        min(max(0, splitButtonBackdropEffect.fadeRampStartFraction), 0.95)
-    }
-
-    private var splitButtonContentFadeWidth: CGFloat {
-        max(0, splitButtonBackdropEffect.contentFadeWidth)
-    }
-
-    private var splitButtonContentOcclusionWidth: CGFloat {
-        splitButtonsBackdropWidth * min(max(0, splitButtonBackdropEffect.contentOcclusionFraction), 1)
+        chromeSnapshot.actionLaneWidth
     }
 
     private var showsControlShortcutHints: Bool {
@@ -1077,41 +1215,24 @@ struct TabBarView: View {
 
     @ViewBuilder
     private var splitButtonBackdropSurface: some View {
-        if shouldPaintSplitButtonBackdrop {
-            let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
-            let barColor = appearance.usesSharedBackdrop || isFocused
-                ? baseBarColor
-                : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
-            let effect = splitButtonBackdropEffect
-            let targetColor = Self.buttonBackdropColor(
-                for: appearance,
-                focused: isFocused,
-                style: effect.style
-            )
-            let colors = Self.splitButtonBackdropColors(
-                from: barColor,
-                to: targetColor,
-                leadingOpacity: effect.leadingOpacity,
-                trailingOpacity: effect.trailingOpacity,
-                usesSharedBackdrop: appearance.usesSharedBackdrop
-            )
-
+        let snapshot = chromeSnapshot
+        if snapshot.paintsActionLaneSurface {
             HStack(spacing: 0) {
-                if splitButtonBackdropFadeWidth > 0 {
-                    let rampStart = splitButtonBackdropFadeRampStartFraction
+                if snapshot.backdropFadeWidth > 0 {
+                    let rampStart = snapshot.backdropFadeRampStartFraction
                     LinearGradient(
                         stops: [
-                            .init(color: Color(nsColor: colors.leading), location: 0),
-                            .init(color: Color(nsColor: colors.leading), location: rampStart),
-                            .init(color: Color(nsColor: colors.trailing), location: 1)
+                            .init(color: Color(nsColor: snapshot.backdropLeadingColor), location: 0),
+                            .init(color: Color(nsColor: snapshot.backdropLeadingColor), location: rampStart),
+                            .init(color: Color(nsColor: snapshot.backdropTrailingColor), location: 1)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
-                    .frame(width: splitButtonBackdropFadeWidth, height: tabBarHeight)
+                    .frame(width: snapshot.backdropFadeWidth, height: tabBarHeight)
                 }
-                TabBarLayerBackedColor(color: colors.trailing)
-                    .frame(width: splitButtonBackdropSolidWidth, height: tabBarHeight)
+                TabBarLayerBackedColor(color: snapshot.backdropTrailingColor)
+                    .frame(width: snapshot.backdropSolidWidth, height: tabBarHeight)
             }
             .frame(height: tabBarHeight)
         }
@@ -1306,101 +1427,6 @@ struct TabBarView: View {
     }
 
 
-    private static func buttonBackdropColor(
-        for appearance: BonsplitConfiguration.Appearance,
-        focused: Bool,
-        style: BonsplitConfiguration.Appearance.SplitButtonBackdropStyle
-    ) -> NSColor {
-        if appearance.usesSharedBackdrop {
-            return TabBarColors.nsColorSplitButtonBackdropSurface(for: appearance)
-        }
-
-        switch style {
-        case .opaquePaneBackground:
-            return TabBarColors.nsColorPaneBackground(for: appearance).withAlphaComponent(1.0)
-        case .opaqueBarBackground:
-            return TabBarColors.nsColorBarBackground(for: appearance).withAlphaComponent(1.0)
-        case .windowBackground:
-            return NSColor.windowBackgroundColor.withAlphaComponent(1.0)
-        case .controlBackground:
-            return NSColor.controlBackgroundColor.withAlphaComponent(1.0)
-        case .precompositedBarBackground:
-            let chrome = TabBarColors.nsColorBarBackground(for: appearance)
-            let winBg = NSColor.windowBackgroundColor
-            guard let fg = chrome.usingColorSpace(.sRGB),
-                  let bk = winBg.usingColorSpace(.sRGB) else {
-                return chrome.withAlphaComponent(1.0)
-            }
-            let a: CGFloat = focused ? fg.alphaComponent : fg.alphaComponent * 0.95
-            let oneMinusA = 1.0 - a
-            let r = fg.redComponent * a + bk.redComponent * oneMinusA
-            let g = fg.greenComponent * a + bk.greenComponent * oneMinusA
-            let b = fg.blueComponent * a + bk.blueComponent * oneMinusA
-            return NSColor(red: r, green: g, blue: b, alpha: 1.0)
-        case .translucentChrome:
-            let backdrop = TabBarColors.nsColorSplitButtonBackdropSurface(for: appearance)
-            let alpha = focused ? backdrop.alphaComponent : backdrop.alphaComponent * 0.95
-            return backdrop.withAlphaComponent(alpha)
-        case .hidden:
-            return .clear
-        case .precompositedPaneBackground:
-            return TabBarColors.nsColorSplitButtonBackdrop(for: appearance, focused: focused)
-        }
-    }
-
-    private static func blendedSurfaceColor(
-        from base: NSColor,
-        to target: NSColor,
-        amount: CGFloat
-    ) -> NSColor {
-        let clampedAmount = min(max(amount, 0), 1)
-        let source = base.usingColorSpace(.sRGB) ?? base
-        let destination = target.usingColorSpace(.sRGB) ?? target
-        let inverse = 1 - clampedAmount
-        return NSColor(
-            red: source.redComponent * inverse + destination.redComponent * clampedAmount,
-            green: source.greenComponent * inverse + destination.greenComponent * clampedAmount,
-            blue: source.blueComponent * inverse + destination.blueComponent * clampedAmount,
-            alpha: source.alphaComponent * inverse + destination.alphaComponent * clampedAmount
-        )
-    }
-
-    private static func splitButtonBackdropColors(
-        from base: NSColor,
-        to target: NSColor,
-        leadingOpacity: CGFloat,
-        trailingOpacity: CGFloat,
-        usesSharedBackdrop: Bool
-    ) -> (leading: NSColor, trailing: NSColor) {
-        if usesSharedBackdrop {
-            return (
-                alphaOnlySurfaceColor(target, opacity: leadingOpacity),
-                alphaOnlySurfaceColor(target, opacity: trailingOpacity)
-            )
-        }
-
-        return (
-            blendedSurfaceColor(from: base, to: target, amount: leadingOpacity),
-            blendedSurfaceColor(from: base, to: target, amount: trailingOpacity)
-        )
-    }
-
-    private static func alphaOnlySurfaceColor(
-        _ color: NSColor,
-        opacity: CGFloat
-    ) -> NSColor {
-        let clampedOpacity = min(max(opacity, 0), 1)
-        guard let source = color.usingColorSpace(.sRGB) else {
-            return color.withAlphaComponent(color.alphaComponent * clampedOpacity)
-        }
-        return NSColor(
-            red: source.redComponent,
-            green: source.greenComponent,
-            blue: source.blueComponent,
-            alpha: source.alphaComponent * clampedOpacity
-        )
-    }
-
     // MARK: - Combined Mask (scroll fades + button area)
     //
     // The split-button backdrop is responsible for occluding content under the controls.
@@ -1410,6 +1436,7 @@ struct TabBarView: View {
     @ViewBuilder
     private var combinedMask: some View {
         let fadeWidth: CGFloat = 24
+        let snapshot = chromeSnapshot
         HStack(spacing: 0) {
             // Left scroll fade
             LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
@@ -1419,13 +1446,13 @@ struct TabBarView: View {
             Rectangle().fill(Color.black)
                 .frame(height: tabBarHeight)
 
-            if shouldMaskTabsUnderSplitButtonBackdrop {
+            if snapshot.masksTabContentUnderActionLane {
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: splitButtonContentFadeWidth, height: tabBarHeight)
-                // Content is already fully faded before the backdrop ramp starts. This keeps the
-                // beginning of a transparent backdrop fade from blending over bright tab text.
+                    .frame(width: snapshot.contentFadeWidth, height: tabBarHeight)
+                // Action-lane content is always fully removed from the tab layer.
+                // Backdrop softness belongs to the foreground chrome snapshot, not the mask width.
                 Color.clear
-                    .frame(width: splitButtonContentOcclusionWidth, height: tabBarHeight)
+                    .frame(width: snapshot.contentOcclusionWidth, height: tabBarHeight)
             } else {
                 // Right scroll fade only when scroll content actually overflows.
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
@@ -1439,11 +1466,7 @@ struct TabBarView: View {
 
     @ViewBuilder
     private var tabBarSurface: some View {
-        let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
-        let barColor = appearance.usesSharedBackdrop || isFocused
-            ? baseBarColor
-            : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
-        TabBarLayerBackedColor(color: barColor)
+        TabBarLayerBackedColor(color: chromeSnapshot.barColor)
             .frame(maxWidth: .infinity)
             .frame(height: tabBarHeight)
     }
