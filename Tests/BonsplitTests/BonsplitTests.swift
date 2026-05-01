@@ -1682,6 +1682,44 @@ final class BonsplitTests: XCTestCase {
         )
     }
 
+    func testLegacyFileDropUpdatedRejectsEdgeZones() {
+        XCTAssertEqual(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .center,
+                isFileDropOnly: true,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            ),
+            .center
+        )
+        XCTAssertNil(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .left,
+                isFileDropOnly: true,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: true
+            )
+        )
+        XCTAssertEqual(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .left,
+                isFileDropOnly: true,
+                hasExternalFileDropHandler: true,
+                hasLegacyFileDropHandler: false
+            ),
+            .left
+        )
+        XCTAssertEqual(
+            UnifiedPaneDropDelegate.acceptedDropZone(
+                .left,
+                isFileDropOnly: false,
+                hasExternalFileDropHandler: false,
+                hasLegacyFileDropHandler: false
+            ),
+            .left
+        )
+    }
+
     func testFileURLPasteboardReaderReturnsFileURLs() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("bonsplit-file-drop-\(UUID().uuidString)", isDirectory: true)

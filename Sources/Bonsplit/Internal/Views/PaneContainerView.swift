@@ -511,9 +511,21 @@ struct UnifiedPaneDropDelegate: DropDelegate {
             return DropProposal(operation: dropOperation(for: info))
         }
         let zone = effectiveZone(for: info)
-        activeDropZone = zone
+        guard let acceptedZone = Self.acceptedDropZone(
+            zone,
+            isFileDropOnly: isFileDropOnly(info),
+            hasExternalFileDropHandler: bonsplitController.onExternalFileDrop != nil,
+            hasLegacyFileDropHandler: controller.onFileDrop != nil
+        ) else {
+            activeDropZone = nil
 #if DEBUG
-        dlog("pane.dropUpdated pane=\(pane.id.id.uuidString.prefix(5)) zone=\(zone)")
+            dlog("pane.dropUpdated pane=\(pane.id.id.uuidString.prefix(5)) zone=\(zone) allowed=0")
+#endif
+            return DropProposal(operation: .cancel)
+        }
+        activeDropZone = acceptedZone
+#if DEBUG
+        dlog("pane.dropUpdated pane=\(pane.id.id.uuidString.prefix(5)) zone=\(acceptedZone)")
 #endif
         return DropProposal(operation: dropOperation(for: info))
     }
@@ -576,10 +588,31 @@ struct UnifiedPaneDropDelegate: DropDelegate {
         return zone == .center
     }
 
+    static func acceptedDropZone(
+        _ zone: DropZone,
+        isFileDropOnly: Bool,
+        hasExternalFileDropHandler: Bool,
+        hasLegacyFileDropHandler: Bool
+    ) -> DropZone? {
+        if isFileDropOnly,
+           !acceptsFileDrop(
+               zone: zone,
+               hasExternalFileDropHandler: hasExternalFileDropHandler,
+               hasLegacyFileDropHandler: hasLegacyFileDropHandler
+           ) {
+            return nil
+        }
+        return zone
+    }
+
     private func dropOperation(for info: DropInfo) -> DropOperation {
-        info.hasItemsConforming(to: [.fileURL]) && !info.hasItemsConforming(to: [.tabTransfer])
+        isFileDropOnly(info)
             ? .copy
             : .move
+    }
+
+    private func isFileDropOnly(_ info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL]) && !info.hasItemsConforming(to: [.tabTransfer])
     }
 
     private func destination(
