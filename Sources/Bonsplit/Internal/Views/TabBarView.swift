@@ -214,10 +214,12 @@ enum TabBarStyling {
 
     static func splitButtonBackdropSolidSurfaceWidth(
         effectSolidWidth: CGFloat,
+        visibleLaneWidth: CGFloat,
         contentOcclusionWidth: CGFloat,
         contentFadeWidth: CGFloat
     ) -> CGFloat {
-        let controlSurfaceWidth = max(0, contentOcclusionWidth) + max(0, contentFadeWidth)
+        let controlSurfaceWidth = max(max(0, visibleLaneWidth), max(0, contentOcclusionWidth))
+            + max(0, contentFadeWidth)
         return max(max(0, effectSolidWidth), controlSurfaceWidth)
     }
 
@@ -439,7 +441,9 @@ struct TabBarChromeSnapshot {
     }
 
     var actionLaneSeparatorSolidWidth: CGFloat {
-        masksTabContentUnderActionLane ? contentOcclusionWidth : backdropSolidWidth
+        masksTabContentUnderActionLane
+            ? max(actionLaneWidth, contentOcclusionWidth)
+            : backdropSolidWidth
     }
 
     init(
@@ -489,6 +493,7 @@ struct TabBarChromeSnapshot {
         self.backdropFadeWidth = max(0, effect.fadeWidth)
         self.backdropSolidWidth = TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
             effectSolidWidth: effect.solidWidth,
+            visibleLaneWidth: actionLaneWidth,
             contentOcclusionWidth: contentOcclusionWidth,
             contentFadeWidth: contentFadeWidth
         )

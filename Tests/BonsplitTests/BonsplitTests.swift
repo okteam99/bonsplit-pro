@@ -441,14 +441,16 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 2,
+                visibleLaneWidth: 90,
                 contentOcclusionWidth: 60,
                 contentFadeWidth: 42
             ),
-            102
+            132
         )
         XCTAssertEqual(
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 96,
+                visibleLaneWidth: 72,
                 contentOcclusionWidth: 60,
                 contentFadeWidth: 24
             ),
@@ -466,10 +468,11 @@ final class BonsplitTests: XCTestCase {
         XCTAssertEqual(
             TabBarStyling.splitButtonBackdropSolidSurfaceWidth(
                 effectSolidWidth: 2,
+                visibleLaneWidth: 200,
                 contentOcclusionWidth: occlusion,
                 contentFadeWidth: 24
             ),
-            74
+            224
         )
     }
 
@@ -1790,11 +1793,11 @@ final class BonsplitTests: XCTestCase {
         )
 
         XCTAssertEqual(snapshot.actionLaneSeparatorFadeWidth, snapshot.contentFadeWidth, accuracy: 0.0001)
-        XCTAssertEqual(snapshot.actionLaneSeparatorSolidWidth, snapshot.contentOcclusionWidth, accuracy: 0.0001)
-        XCTAssertLessThan(snapshot.actionLaneSeparatorSolidWidth, snapshot.backdropSolidWidth)
+        XCTAssertEqual(snapshot.actionLaneSeparatorSolidWidth, snapshot.actionLaneWidth, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.backdropSolidWidth, snapshot.actionLaneWidth + snapshot.contentFadeWidth, accuracy: 0.0001)
         XCTAssertEqual(
             snapshot.actionLaneSeparatorFadeWidth + snapshot.actionLaneSeparatorSolidWidth,
-            snapshot.contentFadeWidth + snapshot.contentOcclusionWidth,
+            snapshot.contentFadeWidth + snapshot.actionLaneWidth,
             accuracy: 0.0001
         )
     }
@@ -2716,6 +2719,7 @@ final class BonsplitTests: XCTestCase {
             visibleLaneWidth: splitButtonLaneWidth,
             contentOcclusionFraction: 0.6875
         )
+        let solidWidth = max(splitButtonLaneWidth, contentOcclusionWidth)
         let appearance = sharedBackdropManyActionAppearance(
             tabBarHeight: size.height,
             buttonCount: buttonCount,
@@ -2739,8 +2743,8 @@ final class BonsplitTests: XCTestCase {
             }
         ) { hostingView in
             let separatorY = size.height - 0.5
-            let fadeStartX = size.width - contentOcclusionWidth - contentFadeWidth
-            let solidStartX = size.width - contentOcclusionWidth
+            let fadeStartX = size.width - solidWidth - contentFadeWidth
+            let solidStartX = size.width - solidWidth
             guard let fadeStart = renderedColorInViewCoordinates(
                 in: hostingView,
                 at: NSPoint(x: fadeStartX + 2, y: separatorY)
