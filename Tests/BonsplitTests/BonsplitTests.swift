@@ -1646,14 +1646,24 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectedTabIndicatorFadesIntoSplitButtonLane() {
-        guard let brightnesses = renderedSelectedIndicatorFadeBrightnesses() else {
-            XCTFail("Expected rendered selected indicator fade colors")
+    func testSplitButtonBackdropOccludesTabChromeAtContentFadeStart() {
+        guard let saturation = renderedSplitButtonContentFadeStartSaturation() else {
+            XCTFail("Expected rendered split button content fade colors")
             return
         }
 
-        XCTAssertGreaterThan(brightnesses.leading, 0.15)
-        XCTAssertLessThan(brightnesses.trailing, brightnesses.leading - 0.08)
+        XCTAssertLessThan(saturation, 0.2)
+    }
+
+    @MainActor
+    func testSelectedTabIndicatorDoesNotBleedUnderSplitButtonBackdrop() {
+        guard let brightnesses = renderedSelectedIndicatorBackdropBrightnesses() else {
+            XCTFail("Expected rendered selected indicator backdrop colors")
+            return
+        }
+
+        XCTAssertLessThan(brightnesses.leading, 0.08)
+        XCTAssertLessThan(brightnesses.trailing, 0.08)
     }
 
     func testTabBarSeparatorSegmentsClampGapIntoBounds() {
@@ -2430,7 +2440,49 @@ final class BonsplitTests: XCTestCase {
     }
 
     @MainActor
-    private func renderedSelectedIndicatorFadeBrightnesses() -> (leading: CGFloat, trailing: CGFloat)? {
+    private func renderedSplitButtonContentFadeStartSaturation() -> CGFloat? {
+        let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
+        let size = NSSize(width: 240, height: 28)
+        let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)
+        let contentFadeWidth = BonsplitConfiguration.Appearance.SplitButtonBackdropEffect.default.contentFadeWidth
+        let appearance = BonsplitConfiguration.Appearance(
+            tabBarHeight: size.height,
+            splitButtonBackdropEffect: .default,
+            chromeColors: .init(
+                backgroundHex: "#000000",
+                tabBarBackgroundHex: "#000000",
+                splitButtonBackdropHex: "#000000",
+                borderHex: "#00000000"
+            )
+        )
+
+        return renderedTabBarValue(
+            isFocused: true,
+            appearance: appearance,
+            showSplitButtons: true,
+            size: size,
+            configurePane: { pane in
+                let selected = TabItem(
+                    title: "selected tab title that reaches under the controls",
+                    icon: nil
+                )
+                pane.tabs = [selected]
+                pane.selectedTabId = selected.id
+            }
+        ) { hostingView in
+            let laneStartX = size.width - splitButtonLaneWidth
+            let sampleRect = NSRect(
+                x: laneStartX - contentFadeWidth + 2,
+                y: 0,
+                width: 8,
+                height: 4
+            )
+            return maximumSaturation(in: hostingView, sampleRect: sampleRect)
+        }
+    }
+
+    @MainActor
+    private func renderedSelectedIndicatorBackdropBrightnesses() -> (leading: CGFloat, trailing: CGFloat)? {
         let buttonCount = BonsplitConfiguration.SplitActionButton.defaults.count
         let size = NSSize(width: 240, height: 28)
         let splitButtonLaneWidth = visibleSplitButtonLaneWidth(size: size, buttonCount: buttonCount)

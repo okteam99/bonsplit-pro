@@ -739,18 +739,6 @@ struct TabBarView: View {
                 }
                 .frame(height: tabBarHeight)
                 .mask(combinedMask)
-                // Split buttons sit on top of the tab strip. Their backing surface is
-                // painted by `tabBarSurface` so translucent colors are composited once,
-                // while `combinedMask` fades overflowing tab content out below them.
-                .overlay(alignment: .trailing) {
-                    if shouldRenderSplitButtons {
-                        splitButtons
-                            .saturation(tabBarSaturation)
-                            .opacity(shouldShowSplitButtons ? 1 : 0)
-                            .allowsHitTesting(shouldShowSplitButtons)
-                            .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
-                    }
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -758,6 +746,9 @@ struct TabBarView: View {
         .coordinateSpace(name: "tabBar")
         .background(tabBarSurface)
         .overlay(maskedTabBarChrome)
+        .overlay(alignment: .trailing) {
+            splitButtonChrome
+        }
         .background(TabBarDragAndHoverView(
             isMinimalMode: isMinimalMode,
             onDoubleClick: {
@@ -1065,6 +1056,66 @@ struct TabBarView: View {
     }
 
     // MARK: - Split Buttons
+
+    @ViewBuilder
+    private var splitButtonChrome: some View {
+        if shouldRenderSplitButtons {
+            ZStack(alignment: .trailing) {
+                splitButtonBackdropSurface
+                    .opacity(shouldShowSplitButtons ? 1 : 0)
+                    .allowsHitTesting(false)
+
+                splitButtons
+                    .saturation(tabBarSaturation)
+                    .opacity(shouldShowSplitButtons ? 1 : 0)
+                    .allowsHitTesting(shouldShowSplitButtons)
+            }
+            .frame(height: tabBarHeight, alignment: .trailing)
+            .animation(.easeInOut(duration: 0.14), value: shouldShowSplitButtons)
+        }
+    }
+
+    @ViewBuilder
+    private var splitButtonBackdropSurface: some View {
+        if shouldPaintSplitButtonBackdrop {
+            let baseBarColor = TabBarColors.nsColorBarBackground(for: appearance)
+            let barColor = appearance.usesSharedBackdrop || isFocused
+                ? baseBarColor
+                : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
+            let effect = splitButtonBackdropEffect
+            let targetColor = Self.buttonBackdropColor(
+                for: appearance,
+                focused: isFocused,
+                style: effect.style
+            )
+            let colors = Self.splitButtonBackdropColors(
+                from: barColor,
+                to: targetColor,
+                leadingOpacity: effect.leadingOpacity,
+                trailingOpacity: effect.trailingOpacity,
+                usesSharedBackdrop: appearance.usesSharedBackdrop
+            )
+
+            HStack(spacing: 0) {
+                if splitButtonBackdropFadeWidth > 0 {
+                    let rampStart = splitButtonBackdropFadeRampStartFraction
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(nsColor: colors.leading), location: 0),
+                            .init(color: Color(nsColor: colors.leading), location: rampStart),
+                            .init(color: Color(nsColor: colors.trailing), location: 1)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: splitButtonBackdropFadeWidth, height: tabBarHeight)
+                }
+                TabBarLayerBackedColor(color: colors.trailing)
+                    .frame(width: splitButtonBackdropSolidWidth, height: tabBarHeight)
+            }
+            .frame(height: tabBarHeight)
+        }
+    }
 
     @ViewBuilder
     private var splitButtons: some View {
@@ -1392,42 +1443,9 @@ struct TabBarView: View {
         let barColor = appearance.usesSharedBackdrop || isFocused
             ? baseBarColor
             : baseBarColor.withAlphaComponent(baseBarColor.alphaComponent * 0.95)
-        HStack(spacing: 0) {
-            TabBarLayerBackedColor(color: barColor)
-                .frame(maxWidth: .infinity)
-                .frame(height: tabBarHeight)
-            if shouldPaintSplitButtonBackdrop {
-                let effect = splitButtonBackdropEffect
-                let targetColor = Self.buttonBackdropColor(
-                    for: appearance,
-                    focused: isFocused,
-                    style: effect.style
-                )
-                let colors = Self.splitButtonBackdropColors(
-                    from: barColor,
-                    to: targetColor,
-                    leadingOpacity: effect.leadingOpacity,
-                    trailingOpacity: effect.trailingOpacity,
-                    usesSharedBackdrop: appearance.usesSharedBackdrop
-                )
-                if splitButtonBackdropFadeWidth > 0 {
-                    let rampStart = splitButtonBackdropFadeRampStartFraction
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color(nsColor: colors.leading), location: 0),
-                            .init(color: Color(nsColor: colors.leading), location: rampStart),
-                            .init(color: Color(nsColor: colors.trailing), location: 1)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: splitButtonBackdropFadeWidth, height: tabBarHeight)
-                }
-                TabBarLayerBackedColor(color: colors.trailing)
-                    .frame(width: splitButtonBackdropSolidWidth, height: tabBarHeight)
-            }
-        }
-        .frame(height: tabBarHeight)
+        TabBarLayerBackedColor(color: barColor)
+            .frame(maxWidth: .infinity)
+            .frame(height: tabBarHeight)
     }
 
     @ViewBuilder
