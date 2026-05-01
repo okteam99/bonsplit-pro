@@ -426,6 +426,10 @@ struct TabBarChromeSnapshot {
     let backdropLeadingColor: NSColor
     let backdropTrailingColor: NSColor
 
+    var drawsActionLaneSeparator: Bool {
+        paintsActionLaneSurface || masksTabContentUnderActionLane
+    }
+
     init(
         appearance: BonsplitConfiguration.Appearance,
         layout: TabBarLayout,
@@ -1216,6 +1220,10 @@ struct TabBarView: View {
                     .opacity(shouldShowSplitButtons ? 1 : 0)
                     .allowsHitTesting(false)
 
+                splitButtonBackdropSeparator
+                    .opacity(shouldShowSplitButtons ? 1 : 0)
+                    .allowsHitTesting(false)
+
                 splitButtons
                     .saturation(tabBarSaturation)
                     .opacity(shouldShowSplitButtons ? 1 : 0)
@@ -1246,6 +1254,36 @@ struct TabBarView: View {
                 }
                 TabBarLayerBackedColor(color: snapshot.backdropTrailingColor)
                     .frame(width: snapshot.backdropSolidWidth, height: tabBarHeight)
+            }
+            .frame(height: tabBarHeight)
+        }
+    }
+
+    @ViewBuilder
+    private var splitButtonBackdropSeparator: some View {
+        let snapshot = chromeSnapshot
+        if snapshot.drawsActionLaneSeparator {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                HStack(spacing: 0) {
+                    let separator = TabBarColors.separator(for: appearance)
+                    if snapshot.backdropFadeWidth > 0 {
+                        let rampStart = snapshot.backdropFadeRampStartFraction
+                        LinearGradient(
+                            stops: [
+                                .init(color: separator.opacity(0), location: 0),
+                                .init(color: separator.opacity(0), location: rampStart),
+                                .init(color: separator, location: 1)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: snapshot.backdropFadeWidth, height: 1)
+                    }
+                    Rectangle()
+                        .fill(separator)
+                        .frame(width: snapshot.backdropSolidWidth, height: 1)
+                }
             }
             .frame(height: tabBarHeight)
         }
